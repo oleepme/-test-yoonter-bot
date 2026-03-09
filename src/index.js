@@ -46,22 +46,68 @@ http
   })
   .listen(PORT, () => console.log(`🌐 Dummy web server running on port ${PORT}`));
 
+client.on("error", (e) => {
+  console.error("[CLIENT_ERROR]", e);
+});
+
+process.on("unhandledRejection", (reason) => {
+  console.error("[UNHANDLED_REJECTION]", reason);
+});
+
+process.on("uncaughtException", (err) => {
+  console.error("[UNCAUGHT_EXCEPTION]", err);
+});
+
+// =========================
+// 고정 메시지 중복 생성 방지
+// - 핀 목록 먼저 확인
+// - 없으면 최근 메시지 50개에서 같은 footer 탐색
+// - 찾으면 재사용 / 핀만 복구
+// =========================
 async function ensurePinnedMessage(channel, footerText, payloadBuilder) {
-  const pins = await channel.messages.fetchPins().catch(() => null);
+  // 1) pinned 검색
+  const pins = await channel.messages.fetchPins().catch((e) => {
+    console.error("[PIN_FETCH_FAIL]", channel.id, e?.message || e);
+    return null;
+  });
 
   const pinList = pins
     ? Array.from(typeof pins.values === "function" ? pins.values() : [])
     : [];
 
-  const alreadyExists = pinList.find(
-    (m) => m?.embeds?.[0]?.footer?.text === footerText
-  );
+  let found = pinList.find((m) => m?.embeds?.[0]?.footer?.text === footerText);
 
-  if (alreadyExists) return;
+  // 2) 최근 메시지 검색 (재기동 때 중복 생성 방지)
+  if (!found) {
+    const recent = await channel.messages.fetch({ limit: 50 }).catch((e) => {
+      console.error("[MSG_FETCH_FAIL]", channel.id, e?.message || e);
+      return null;
+    });
 
+    const recentList = recent
+      ? Array.from(typeof recent.values === "function" ? recent.values() : [])
+      : [];
+
+    found = recentList.find((m) => m?.embeds?.[0]?.footer?.text === footerText);
+
+    if (found) {
+      await found.pin().catch(() => {});
+      console.log("[PIN_REUSED_RECENT]", footerText, channel.id, found.id);
+      return found;
+    }
+  }
+
+  if (found) {
+    console.log("[PIN_REUSED_PINNED]", footerText, channel.id, found.id);
+    return found;
+  }
+
+  // 3) 없을 때만 새로 생성
   const payload = payloadBuilder();
   const msg = await channel.send(payload);
   await msg.pin().catch(() => {});
+  console.log("[PIN_CREATED]", footerText, channel.id, msg.id);
+  return msg;
 }
 
 // =========================
@@ -162,11 +208,24 @@ function getRoleSummary(member) {
 }
 
 async function sendWelcomeEmbed(guild, { title, member, color = 0x5865f2 }) {
-  if (!ENABLE_WELCOME) return;
-  if (!WELCOME_BOARD_CHANNEL_ID) return;
+  if (!ENABLE_WELCOME) {
+    console.log("[WELCOME_SKIP] ENABLE_WELCOME=false");
+    return;
+  }
+  if (!WELCOME_BOARD_CHANNEL_ID) {
+    console.log("[WELCOME_SKIP] WELCOME_BOARD_CHANNEL_ID missing");
+    return;
+  }
 
-  const ch = await guild.channels.fetch(WELCOME_BOARD_CHANNEL_ID).catch(() => null);
-  if (!ch?.isTextBased()) return;
+  const ch = await guild.channels.fetch(WELCOME_BOARD_CHANNEL_ID).catch((e) => {
+    console.error("[WELCOME_CHANNEL_FETCH_FAIL]", e?.message || e);
+    return null;
+  });
+
+  if (!ch?.isTextBased()) {
+    console.error("[WELCOME_CHANNEL_INVALID]", WELCOME_BOARD_CHANNEL_ID);
+    return;
+  }
 
   const mainLine = getUserLine(member);
   const roleLine = getRoleSummary(member);
@@ -226,10 +285,11 @@ client.once("clientReady", async () => {
 // =========================
 client.on("guildMemberAdd", async (member) => {
   try {
+    console.log("[WELCOME_ADD_EVENT]", member.id);
+
     if (!ENABLE_WELCOME) return;
     if (member.guild.id !== GUILD_ID) return;
 
-    // 서버 표시명 반영을 위해 한 번 더 fetch
     const freshMember = await member.guild.members.fetch(member.id).catch(() => member);
 
     const afterCount = await calculateVisibleMemberCount(member.guild);
@@ -253,6 +313,8 @@ client.on("guildMemberAdd", async (member) => {
 // =========================
 client.on("guildMemberRemove", async (member) => {
   try {
+    console.log("[WELCOME_REMOVE_EVENT]", member.id);
+
     if (!ENABLE_WELCOME) return;
     if (member.guild.id !== GUILD_ID) return;
 
@@ -283,6 +345,8 @@ client.on("guildMemberRemove", async (member) => {
 // =========================
 client.on("guildMemberUpdate", async (oldMember, newMember) => {
   try {
+    console.log("[WELCOME_UPDATE_EVENT]", newMember.id);
+
     if (!ENABLE_WELCOME) return;
     if (newMember.guild.id !== GUILD_ID) return;
 
