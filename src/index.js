@@ -1,8 +1,7 @@
-// src/index.js
 const { initDb } = require("./db");
 
 const http = require("http");
-const { Client, GatewayIntentBits, AttachmentBuilder } = require("discord.js");
+const { Client, GatewayIntentBits, AttachmentBuilder, EmbedBuilder } = require("discord.js");
 const { registerCommands } = require("./discord/registerCommands");
 const {
   DISCORD_TOKEN,
@@ -12,13 +11,14 @@ const {
   ENABLE_NICK,
   ENABLE_PARTY,
   ENABLE_WELCOME,
+  WELCOME_BOARD_CHANNEL_ID,
   ALT_ROLE_ID,
   OUT_ROLE_ID,
   ROLE_NEWBIE_ID,
   ROLE_MEMBER_ID,
+  ROLE_ELITE_MEMBER_ID,
+  ROLE_SENIOR_MEMBER_ID,
 } = require("./config");
-
-const { logEmbed, field } = require("./discord/log");
 
 const { partyBoardEmbed, partyBoardComponents } = require("./party/ui");
 const { nicknameBoardComponents } = require("./features/nickname/ui");
@@ -48,7 +48,7 @@ http
   .listen(PORT, () => console.log(`🌐 Dummy web server running on port ${PORT}`));
 
 async function ensurePinnedMessage(channel, footerText, payloadBuilder) {
-  const pins = await channel.messages.fetchPinned().catch(() => null);
+  const pins = await channel.messages.fetchPins().catch(() => null);
   if (pins?.find((m) => m.embeds?.[0]?.footer?.text === footerText)) return;
 
   const payload = payloadBuilder();
@@ -57,7 +57,7 @@ async function ensurePinnedMessage(channel, footerText, payloadBuilder) {
 }
 
 // =========================
-// ✅ Member export (CSV)
+// Member export (CSV)
 // =========================
 function csvEscape(value) {
   const s = (value ?? "").toString();
@@ -83,7 +83,7 @@ function toCsv(rows) {
   return "\uFEFF" + lines.join("\n");
 }
 
-// ✅ included export에서 쓰는 제외 규칙
+// included export에서 쓰는 제외 규칙
 function isCountExcluded(member) {
   if (!member) return true;
   if (member.user?.bot) return true;
@@ -94,19 +94,76 @@ function isCountExcluded(member) {
   return false;
 }
 
-function formatRoleMentions(roleIds) {
-  const arr = roleIds.filter(Boolean);
-  return arr.length ? arr.map((id) => `<@&${id}>`).join(" ") : "(없음)";
+function hasAnyIncludedBaseRole(member) {
+  const includedRoleIds = [
+    ROLE_NEWBIE_ID,
+    ROLE_MEMBER_ID,
+    ROLE_ELITE_MEMBER_ID,
+    ROLE_SENIOR_MEMBER_ID,
+  ].filter(Boolean);
+
+  if (!includedRoleIds.length) return false;
+  return includedRoleIds.some((roleId) => member.roles?.cache?.has?.(roleId));
 }
 
-function formatUserLabel(member) {
-  const display = member.displayName || member.user?.displayName || member.user?.username || "알수없음";
+function isIncludedCountMember(member) {
+  if (!member) return false;
+  if (member.user?.bot) return false;
+  if (OUT_ROLE_ID && member.roles?.cache?.has?.(OUT_ROLE_ID)) return false;
+  if (ALT_ROLE_ID && member.roles?.cache?.has?.(ALT_ROLE_ID)) return false;
+  return hasAnyIncludedBaseRole(member);
+}
+
+async function calculateVisibleMemberCount(guild) {
+  const members = await guild.members.fetch().catch(() => guild.members.cache);
+  return members.filter((m) => isIncludedCountMember(m)).size;
+}
+
+function getUserLine(member) {
+  const displayName = member.displayName || member.nickname || member.user?.displayName || member.user?.username || "알수없음";
   const username = member.user?.username || "unknown";
-  return `${display}\n${username}\n<@${member.id}>`;
+  return `${displayName} · ${username} (<@${member.id}>)`;
 }
 
-async function writeWelcomeLog(guild, payload) {
-  await logEmbed(guild, { type: "WELCOME", ...payload });
+function getRoleSummary(member) {
+  const lines = [];
+
+  const rolePairs = [
+    ROLE_NEWBIE_ID ? [ROLE_NEWBIE_ID, member.guild.roles.cache.get(ROLE_NEWBIE_ID)?.name] : null,
+    ROLE_MEMBER_ID ? [ROLE_MEMBER_ID, member.guild.roles.cache.get(ROLE_MEMBER_ID)?.name] : null,
+    ROLE_ELITE_MEMBER_ID ? [ROLE_ELITE_MEMBER_ID, member.guild.roles.cache.get(ROLE_ELITE_MEMBER_ID)?.name] : null,
+    ROLE_SENIOR_MEMBER_ID ? [ROLE_SENIOR_MEMBER_ID, member.guild.roles.cache.get(ROLE_SENIOR_MEMBER_ID)?.name] : null,
+  ].filter(Boolean);
+
+  for (const [roleId, roleName] of rolePairs) {
+    if (roleId && member.roles.cache.has(roleId) && roleName) {
+      lines.push(roleName);
+    }
+  }
+
+  if (!lines.length) return "(역할 없음)";
+  return `(${lines.join(" · ")})`;
+}
+
+async function sendWelcomeEmbed(guild, { title, member, showRoles = true, color = 0x5865f2 }) {
+  if (!ENABLE_WELCOME) return;
+  if (!WELCOME_BOARD_CHANNEL_ID) return;
+
+  const ch = await guild.channels.fetch(WELCOME_BOARD_CHANNEL_ID).catch(() => null);
+  if (!ch?.isTextBased()) return;
+
+  const embed = new EmbedBuilder()
+    .setColor(color)
+    .setTitle(title)
+    .setDescription(
+      showRoles
+        ? `${getUserLine(member)}\n${getRoleSummary(member)}`
+        : `${getUserLine(member)}`
+    );
+
+  await ch.send({ embeds: [embed] }).catch((e) => {
+    console.error("[WELCOME_SEND_FAIL]", e?.message || e);
+  });
 }
 
 initDb()
@@ -116,7 +173,7 @@ initDb()
     process.exit(1);
   });
 
-client.once("ready", async () => {
+client.once("clientReady", async () => {
   console.log(`🤖 Logged in as ${client.user.tag}`);
 
   await registerCommands();
@@ -153,124 +210,124 @@ client.once("ready", async () => {
 });
 
 // =========================
-// ✅ 입퇴장 / 외출 / 부계정 알림
+// 입퇴장 / 외출 / 복귀 / 부계정
 // =========================
 client.on("guildMemberAdd", async (member) => {
-  if (!ENABLE_WELCOME) return;
-  if (member.guild.id !== GUILD_ID) return;
+  try {
+    if (!ENABLE_WELCOME) return;
+    if (member.guild.id !== GUILD_ID) return;
 
-  const beforeCount = Math.max(0, member.guild.memberCount - 1);
-  const afterCount = member.guild.memberCount;
+    const afterCount = await calculateVisibleMemberCount(member.guild);
+    const beforeCount = Math.max(0, afterCount - (isIncludedCountMember(member) ? 1 : 0));
 
-  await writeWelcomeLog(member.guild, {
-    title: `입장 (${beforeCount} → ${afterCount})`,
-    color: 0x2ecc71,
-    fields: [
-      field("닉네임 / 계정 / 멘션", formatUserLabel(member)),
-      field("역할", formatRoleMentions([ROLE_NEWBIE_ID, ROLE_MEMBER_ID])),
-      field("사유", "서버 입장"),
-    ],
-  });
+    await sendWelcomeEmbed(member.guild, {
+      title: `⭕ 입장 (${beforeCount} → ${afterCount})`,
+      member,
+      showRoles: true,
+      color: 0xed4245,
+    });
+  } catch (e) {
+    console.error("[WELCOME_ADD_FAIL]", e?.message || e);
+  }
 });
 
 client.on("guildMemberRemove", async (member) => {
-  if (!ENABLE_WELCOME) return;
-  if (member.guild.id !== GUILD_ID) return;
+  try {
+    if (!ENABLE_WELCOME) return;
+    if (member.guild.id !== GUILD_ID) return;
 
-  const beforeCount = member.guild.memberCount + 1;
-  const afterCount = member.guild.memberCount;
+    const wasIncluded = isIncludedCountMember(member);
+    const afterCount = await calculateVisibleMemberCount(member.guild);
+    const beforeCount = wasIncluded ? afterCount + 1 : afterCount;
 
-  const alt = ALT_ROLE_ID && member.roles?.cache?.has?.(ALT_ROLE_ID);
-  const out = OUT_ROLE_ID && member.roles?.cache?.has?.(OUT_ROLE_ID);
-
-  let title = `퇴장 (${beforeCount} → ${afterCount})`;
-  if (alt) title = `부계정 (${beforeCount} → ${afterCount})`;
-  else if (out) title = `외출 (${beforeCount} → ${afterCount})`;
-
-  await writeWelcomeLog(member.guild, {
-    title,
-    color: 0xe74c3c,
-    fields: [
-      field("닉네임 / 계정", `${member.displayName || member.user?.username || "알수없음"}\n${member.user?.username || "unknown"}`),
-      field("멘션/ID", `<@${member.id}> / ${member.id}`),
-      field(
-        "보유 역할",
-        [
-          alt ? "부계정" : "",
-          out ? "외출" : "",
-        ]
-          .filter(Boolean)
-          .join(", ") || "(없음)"
-      ),
-    ],
-  });
+    await sendWelcomeEmbed(member.guild, {
+      title: `❌ 퇴장 (${beforeCount} → ${afterCount})`,
+      member,
+      showRoles: false,
+      color: 0xed4245,
+    });
+  } catch (e) {
+    console.error("[WELCOME_REMOVE_FAIL]", e?.message || e);
+  }
 });
 
 client.on("guildMemberUpdate", async (oldMember, newMember) => {
-  if (!ENABLE_WELCOME) return;
-  if (newMember.guild.id !== GUILD_ID) return;
+  try {
+    if (!ENABLE_WELCOME) return;
+    if (newMember.guild.id !== GUILD_ID) return;
 
-  const oldAlt = ALT_ROLE_ID ? oldMember.roles.cache.has(ALT_ROLE_ID) : false;
-  const newAlt = ALT_ROLE_ID ? newMember.roles.cache.has(ALT_ROLE_ID) : false;
-  const oldOut = OUT_ROLE_ID ? oldMember.roles.cache.has(OUT_ROLE_ID) : false;
-  const newOut = OUT_ROLE_ID ? newMember.roles.cache.has(OUT_ROLE_ID) : false;
+    const oldOut = OUT_ROLE_ID ? oldMember.roles.cache.has(OUT_ROLE_ID) : false;
+    const newOut = OUT_ROLE_ID ? newMember.roles.cache.has(OUT_ROLE_ID) : false;
+    const oldAlt = ALT_ROLE_ID ? oldMember.roles.cache.has(ALT_ROLE_ID) : false;
+    const newAlt = ALT_ROLE_ID ? newMember.roles.cache.has(ALT_ROLE_ID) : false;
 
-  // 외출 부여
-  if (!oldOut && newOut) {
-    await writeWelcomeLog(newMember.guild, {
-      title: `외출 (${newMember.guild.memberCount} → ${newMember.guild.memberCount})`,
-      color: 0xf1c40f,
-      fields: [
-        field("닉네임 / 계정 / 멘션", formatUserLabel(newMember)),
-        field("역할", "<외출>"),
-        field("사유", "외출 역할 부여"),
-      ],
-    });
-  }
+    const oldIncluded = isIncludedCountMember(oldMember);
+    const newIncluded = isIncludedCountMember(newMember);
+    const nowCount = await calculateVisibleMemberCount(newMember.guild);
 
-  // 외출 해제(복귀)
-  if (oldOut && !newOut) {
-    await writeWelcomeLog(newMember.guild, {
-      title: `복귀 (${newMember.guild.memberCount} → ${newMember.guild.memberCount})`,
-      color: 0x3498db,
-      fields: [
-        field("닉네임 / 계정 / 멘션", formatUserLabel(newMember)),
-        field("역할", "(외출 해제)"),
-        field("사유", "외출 역할 제거"),
-      ],
-    });
-  }
+    // 외출
+    if (!oldOut && newOut) {
+      const beforeCount = oldIncluded && !newIncluded ? nowCount + 1 : nowCount;
+      const afterCount = nowCount;
 
-  // 부계정 부여
-  if (!oldAlt && newAlt) {
-    await writeWelcomeLog(newMember.guild, {
-      title: `부계정 (${newMember.guild.memberCount} → ${newMember.guild.memberCount})`,
-      color: 0x9b59b6,
-      fields: [
-        field("닉네임 / 계정 / 멘션", formatUserLabel(newMember)),
-        field("역할", "<부계정>"),
-        field("사유", "부계정 역할 부여"),
-      ],
-    });
-  }
+      await sendWelcomeEmbed(newMember.guild, {
+        title: `✈️ 외출 (${beforeCount} → ${afterCount})`,
+        member: newMember,
+        showRoles: true,
+        color: 0xf1c40f,
+      });
+      return;
+    }
 
-  // 부계정 해제
-  if (oldAlt && !newAlt) {
-    await writeWelcomeLog(newMember.guild, {
-      title: `부계정 해제 (${newMember.guild.memberCount} → ${newMember.guild.memberCount})`,
-      color: 0x95a5a6,
-      fields: [
-        field("닉네임 / 계정 / 멘션", formatUserLabel(newMember)),
-        field("역할", "(부계정 해제)"),
-        field("사유", "부계정 역할 제거"),
-      ],
-    });
+    // 복귀
+    if (oldOut && !newOut) {
+      const beforeCount = !oldIncluded && newIncluded ? Math.max(0, nowCount - 1) : nowCount;
+      const afterCount = nowCount;
+
+      await sendWelcomeEmbed(newMember.guild, {
+        title: `🏠 복귀 (${beforeCount} → ${afterCount})`,
+        member: newMember,
+        showRoles: true,
+        color: 0x2ecc71,
+      });
+      return;
+    }
+
+    // 부계정 부여
+    if (!oldAlt && newAlt) {
+      const beforeCount = oldIncluded && !newIncluded ? nowCount + 1 : nowCount;
+      const afterCount = nowCount;
+
+      await sendWelcomeEmbed(newMember.guild, {
+        title: `👥 부계정 (${beforeCount} → ${afterCount})`,
+        member: newMember,
+        showRoles: true,
+        color: 0x9b59b6,
+      });
+      return;
+    }
+
+    // 부계정 해제
+    if (oldAlt && !newAlt) {
+      const beforeCount = !oldIncluded && newIncluded ? Math.max(0, nowCount - 1) : nowCount;
+      const afterCount = nowCount;
+
+      await sendWelcomeEmbed(newMember.guild, {
+        title: `👥 부계정 해제 (${beforeCount} → ${afterCount})`,
+        member: newMember,
+        showRoles: true,
+        color: 0x95a5a6,
+      });
+      return;
+    }
+  } catch (e) {
+    console.error("[WELCOME_UPDATE_FAIL]", e?.message || e);
   }
 });
 
 client.on("interactionCreate", async (interaction) => {
   try {
-    // ✅ 카카오 import/rebuild/reset
+    // 카카오 import/rebuild/reset
     if (await handleKakaoImport(interaction)) return;
     if (await handleKakaoRebuild(interaction)) return;
     if (await handleKakaoClear(interaction)) return;
@@ -281,7 +338,7 @@ client.on("interactionCreate", async (interaction) => {
       return;
     }
 
-    // ✅ 멤버 내보내기
+    // 멤버 내보내기
     if (interaction.isChatInputCommand() && interaction.commandName === "member_export") {
       await interaction.deferReply({ ephemeral: true });
 
@@ -293,7 +350,10 @@ client.on("interactionCreate", async (interaction) => {
 
       const members = await guild.members.fetch();
       const rows = members.map((m) => {
-        const roles = m.roles.cache.filter((r) => r.name !== "@everyone").map((r) => r.name).join("|");
+        const roles = m.roles.cache
+          .filter((r) => r.name !== "@everyone")
+          .map((r) => r.name)
+          .join("|");
 
         return {
           userId: `\t${m.user.id}`,
@@ -316,7 +376,7 @@ client.on("interactionCreate", async (interaction) => {
       return;
     }
 
-    // ✅ included 멤버만 내보내기
+    // included 멤버만 내보내기
     if (interaction.isChatInputCommand() && interaction.commandName === "included_members_export") {
       await interaction.deferReply({ ephemeral: true }).catch(() => {});
 
@@ -330,7 +390,10 @@ client.on("interactionCreate", async (interaction) => {
       const included = members.filter((m) => !isCountExcluded(m));
 
       const rows = included.map((m) => {
-        const roles = m.roles.cache.filter((r) => r.name !== "@everyone").map((r) => r.name).join("|");
+        const roles = m.roles.cache
+          .filter((r) => r.name !== "@everyone")
+          .map((r) => r.name)
+          .join("|");
 
         return {
           userId: `\t${m.user.id}`,
@@ -347,20 +410,20 @@ client.on("interactionCreate", async (interaction) => {
       const filename = `included_members_export_${guild.id}_${Date.now()}.csv`;
       const file = new AttachmentBuilder(Buffer.from(csv, "utf8"), { name: filename });
 
-      await interaction
-        .editReply({
-          content: `✅ included 멤버 ${rows.length}명 CSV 내보내기 완료 (제외: 봇/외출/부계)`,
-          files: [file],
-        })
-        .catch(() => {});
+      await interaction.editReply({
+        content: `✅ included 멤버 ${rows.length}명 CSV 내보내기 완료 (제외: 봇/외출/부계)`,
+        files: [file],
+      }).catch(() => {});
       return;
     }
 
+    // 닉네임
     if (ENABLE_NICK) {
       const handled = await handleNickname(interaction);
       if (handled) return;
     }
 
+    // 파티
     if (ENABLE_PARTY) {
       const handled = await handleParty(interaction);
       if (handled) return;
@@ -369,10 +432,7 @@ client.on("interactionCreate", async (interaction) => {
     console.error(e);
     if (interaction.isRepliable()) {
       try {
-        await interaction.reply({
-          content: "⚠️ 오류가 발생했습니다. 로그 채널을 확인하세요.",
-          ephemeral: true,
-        });
+        await interaction.reply({ content: "⚠️ 오류가 발생했습니다. 로그 채널을 확인하세요.", ephemeral: true });
       } catch {}
     }
   }
