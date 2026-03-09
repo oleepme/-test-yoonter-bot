@@ -48,7 +48,16 @@ http
 
 async function ensurePinnedMessage(channel, footerText, payloadBuilder) {
   const pins = await channel.messages.fetchPins().catch(() => null);
-  if (pins?.find((m) => m.embeds?.[0]?.footer?.text === footerText)) return;
+
+  const pinList = pins
+    ? Array.from(typeof pins.values === "function" ? pins.values() : [])
+    : [];
+
+  const alreadyExists = pinList.find(
+    (m) => m?.embeds?.[0]?.footer?.text === footerText
+  );
+
+  if (alreadyExists) return;
 
   const payload = payloadBuilder();
   const msg = await channel.send(payload);
@@ -130,13 +139,14 @@ async function calculateVisibleMemberCount(guild) {
 // =========================
 function getUserLine(member) {
   const displayName =
-    member.displayName ||
-    member.nickname ||
-    member.user?.globalName ||
-    member.user?.username ||
+    member?.displayName ||
+    member?.nickname ||
+    member?.user?.globalName ||
+    member?.user?.displayName ||
+    member?.user?.username ||
     "알수없음";
 
-  const username = member.user?.username || "unknown";
+  const username = member?.user?.username || "unknown";
 
   return `${displayName} · ${username} · <@${member.id}>`;
 }
@@ -219,15 +229,18 @@ client.on("guildMemberAdd", async (member) => {
     if (!ENABLE_WELCOME) return;
     if (member.guild.id !== GUILD_ID) return;
 
+    // 서버 표시명 반영을 위해 한 번 더 fetch
+    const freshMember = await member.guild.members.fetch(member.id).catch(() => member);
+
     const afterCount = await calculateVisibleMemberCount(member.guild);
     const beforeCount = Math.max(
       0,
-      afterCount - (isIncludedCountMember(member) ? 1 : 0)
+      afterCount - (isIncludedCountMember(freshMember) ? 1 : 0)
     );
 
     await sendWelcomeEmbed(member.guild, {
       title: `⭕ 입장 (${beforeCount} → ${afterCount})`,
-      member,
+      member: freshMember,
       color: 0xed4245,
     });
   } catch (e) {
@@ -246,6 +259,14 @@ client.on("guildMemberRemove", async (member) => {
     const wasIncluded = isIncludedCountMember(member);
     const afterCount = await calculateVisibleMemberCount(member.guild);
     const beforeCount = wasIncluded ? afterCount + 1 : afterCount;
+
+    console.log("[WELCOME_REMOVE]", {
+      userId: member.id,
+      displayName: member.displayName,
+      wasIncluded,
+      beforeCount,
+      afterCount,
+    });
 
     await sendWelcomeEmbed(member.guild, {
       title: `❌ 퇴장 (${beforeCount} → ${afterCount})`,
@@ -273,6 +294,19 @@ client.on("guildMemberUpdate", async (oldMember, newMember) => {
     const oldIncluded = isIncludedCountMember(oldMember);
     const newIncluded = isIncludedCountMember(newMember);
     const nowCount = await calculateVisibleMemberCount(newMember.guild);
+
+    console.log("[WELCOME_UPDATE]", {
+      userId: newMember.id,
+      oldOut,
+      newOut,
+      oldAlt,
+      newAlt,
+      oldIncluded,
+      newIncluded,
+      nowCount,
+      OUT_ROLE_ID,
+      ALT_ROLE_ID,
+    });
 
     // ✈️ 외출
     if (!oldOut && newOut) {
