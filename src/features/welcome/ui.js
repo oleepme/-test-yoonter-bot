@@ -1,25 +1,49 @@
 const { EmbedBuilder } = require("discord.js");
-const { getDisplayName, getRoleNamesForLog } = require("../../discord/util");
+
+function getLiveNickname(memberLike) {
+  return (
+    memberLike?.displayName ||
+    memberLike?.nickname ||
+    memberLike?.user?.globalName ||
+    memberLike?.user?.username ||
+    "알 수 없음"
+  );
+}
+
+function getLiveUsername(memberLike) {
+  return memberLike?.user?.username || "unknown";
+}
+
+function getLiveMention(memberLike) {
+  return memberLike?.id ? `<@${memberLike.id}>` : "(알 수 없음)";
+}
+
+function getLiveRoleNames(memberLike) {
+  const roles = memberLike?.roles?.cache
+    ? [...memberLike.roles.cache.values()]
+        .filter((role) => role.name !== "@everyone")
+        .map((role) => role.name)
+    : [];
+
+  return roles.length ? roles.join(" · ") : "역할 없음";
+}
 
 function buildWelcomeEmbed({ title, beforeCount, afterCount, memberLike }) {
-  const displayName = getDisplayName(memberLike);
-  const username = memberLike?.user?.username ?? "unknown";
-  const mention = memberLike?.id ? `<@${memberLike.id}>` : "(알 수 없음)";
-  const roleNames = getRoleNamesForLog(memberLike);
+  const nickname = getLiveNickname(memberLike);
+  const username = getLiveUsername(memberLike);
+  const mention = getLiveMention(memberLike);
+  const roleNames = getLiveRoleNames(memberLike);
 
   return new EmbedBuilder()
     .setColor(0x5865f2)
-    .setTitle(`${title} (${beforeCount} → ${afterCount})`)
-    .addFields(
-      {
-        name: "\u200B",
-        value: `**${displayName}** · ${username} · ${mention}\n(${roleNames || "역할 없음"})`,
-        inline: false
-      }
+    .setDescription(
+      `**${title} (${beforeCount} → ${afterCount})**\n` +
+      `${nickname} · ${username} · ${mention}\n` +
+      `${roleNames}`
     )
     .setTimestamp();
 }
 
 module.exports = {
-  buildWelcomeEmbed
+  buildWelcomeEmbed,
 };
