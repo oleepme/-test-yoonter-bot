@@ -625,9 +625,9 @@ async function handleParty(interaction) {
         }
 
         let title = getOptionalTextInputValue(interaction, "title");
-        const partyNote = getOptionalTextInputValue(interaction, "party_note").slice(0, 400);
-        const timeText = getOptionalTextInputValue(interaction, "time_text").slice(0, 50);
-        const maxPlayersRaw = getOptionalTextInputValue(interaction, "max_players");
+        const partyNote = getOptionalTextInputValue(interaction, "note");
+        const timeText = getOptionalTextInputValue(interaction, "time");
+        const maxPlayersRaw = getOptionalTextInputValue(interaction, "max");
         const maxPlayers = isUnlimitedKind(kind) ? 0 : parseMaxPlayers(maxPlayersRaw);
 
         let subKind = "";
