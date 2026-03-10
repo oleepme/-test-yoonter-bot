@@ -154,6 +154,32 @@ function getDisplayNameFromInteraction(interaction) {
   );
 }
 
+function getPartyLogTitle(party) {
+  const boardConfig = getBoardConfigByChannelId(party.channel_id);
+  const rawTitle = (party.title ?? "").toString().trim() || "(제목 없음)";
+  const subKind = (party.sub_kind ?? "").toString().trim();
+  return buildDisplayTitle(boardConfig, rawTitle, party.kind, subKind);
+}
+
+async function writePartyLog(guild, { title, color = 0x95a5a6, party, actorId, fields: extraFields = [] }) {
+  try {
+    const fields = [
+      field("파티", `${kindIcon(party.kind)} ${getPartyLogTitle(party)}`),
+      field("채널", `<#${party.channel_id}>`, false),
+      field("메시지 ID", party.message_id, true),
+    ];
+
+    if (actorId) fields.push(field("처리자", `<@${actorId}>`, true));
+    fields.push(...extraFields);
+
+    await logEmbed(guild, {
+      title,
+      color,
+      fields,
+    }).catch(() => {});
+  } catch {}
+}
+
 function getOptionalTextInputValue(interaction, customId) {
   try {
     return safeTrim(interaction.fields.getTextInputValue(customId));
@@ -659,7 +685,21 @@ async function handleParty(interaction) {
       await setMemberNote(msg.id, interaction.user.id, displayName, "");
 
       const party = await getParty(msg.id);
-      if (party) await refreshPartyMessage(guild, party);
+      if (party) {
+        await refreshPartyMessage(guild, party);
+        await writePartyLog(guild, {
+          title: "📝 파티 생성",
+          color: 0x2ecc71,
+          party,
+          actorId: interaction.user.id,
+          fields: [
+            field("종류", `${kindIcon(party.kind)} ${kindLabel(party.kind)}`, true),
+            field("시간", timeDisplay(party.time_text), true),
+            field("인원", isUnlimitedKind(party.kind) ? "제한 없음" : String(party.max_players || 0), true),
+            field("특이사항", party.party_note || "(없음)"),
+          ],
+        });
+      }
 
       await deleteCreatePrompt(interaction.client, draft);
       createDraft.delete(interaction.user.id);
@@ -719,7 +759,20 @@ async function handleParty(interaction) {
         });
 
         const updated = await getParty(editMsgId);
-        if (updated) await refreshPartyMessage(guild, updated);
+        if (updated) {
+          await refreshPartyMessage(guild, updated);
+          await writePartyLog(guild, {
+            title: "✏️ 파티 수정",
+            color: 0x3498db,
+            party: updated,
+            actorId: interaction.user.id,
+            fields: [
+              field("시간", timeDisplay(updated.time_text), true),
+              field("인원", isUnlimitedKind(updated.kind) ? "제한 없음" : String(updated.max_players || 0), true),
+              field("특이사항", updated.party_note || "(없음)"),
+            ],
+          });
+        }
         await doneModal(interaction);
         return true;
       } catch (err) {
@@ -748,9 +801,34 @@ async function handleParty(interaction) {
         const updated = await getParty(manageMsgId);
         if (updated) {
           if ((updated.members?.length ?? 0) === 0) {
+            await writePartyLog(guild, {
+              title: "🛠️ 인원 관리",
+              color: 0xf1c40f,
+              party: updated,
+              actorId: interaction.user.id,
+              fields: [
+                field("결과", "전체 인원 제거"),
+              ],
+            });
             await endParty(guild, updated, "전원 이탈(자동종료)");
+            await writePartyLog(guild, {
+              title: "⚫ 파티 자동 종료",
+              color: 0x7f8c8d,
+              party: updated,
+              actorId: interaction.user.id,
+              fields: [field("사유", "운영진 인원 관리 후 전원 이탈")],
+            });
           } else {
             await refreshPartyMessage(guild, updated);
+            await writePartyLog(guild, {
+              title: "🛠️ 인원 관리",
+              color: 0xf1c40f,
+              party: updated,
+              actorId: interaction.user.id,
+              fields: [
+                field("현재 참가/대기 인원", String(updated.members?.length ?? 0), true),
+              ],
+            });
           }
         }
 
@@ -791,11 +869,24 @@ async function handleParty(interaction) {
         const base = me ? stripWaitPrefix(me.note) : "";
         const finalNote = inputNote || base || "";
         const displayName = getDisplayNameFromInteraction(interaction);
+        const wasWaiting = !!me && isWaiting(me.note);
+        const existedBefore = !!me;
 
         await setMemberNote(joinMsgId, interaction.user.id, displayName, finalNote);
 
         const updated = await getParty(joinMsgId);
-        if (updated) await refreshPartyMessage(guild, updated);
+        if (updated) {
+          await refreshPartyMessage(guild, updated);
+          await writePartyLog(guild, {
+            title: wasWaiting ? "↩️ 대기 → 참가 전환" : (existedBefore ? "📝 참가 비고 수정" : "➕ 파티 참가"),
+            color: wasWaiting ? 0x1abc9c : 0x2ecc71,
+            party: updated,
+            actorId: interaction.user.id,
+            fields: [
+              field("비고", finalNote || "(없음)"),
+            ],
+          });
+        }
 
         await doneModal(interaction);
         return true;
@@ -821,7 +912,18 @@ async function handleParty(interaction) {
         await setMemberNote(waitMsgId, interaction.user.id, displayName, `${WAIT_PREFIX}${note}`);
 
         const updated = await getParty(waitMsgId);
-        if (updated) await refreshPartyMessage(guild, updated);
+        if (updated) {
+          await refreshPartyMessage(guild, updated);
+          await writePartyLog(guild, {
+            title: "⏳ 대기 등록",
+            color: 0xf39c12,
+            party: updated,
+            actorId: interaction.user.id,
+            fields: [
+              field("대기 비고", note || "(없음)"),
+            ],
+          });
+        }
 
         await doneModal(interaction);
         return true;
@@ -857,7 +959,15 @@ async function handleParty(interaction) {
     }
     await removeMember(msgId, interaction.user.id);
     const updated = await getParty(msgId);
-    if (updated) await refreshPartyMessage(guild, updated);
+    if (updated) {
+      await refreshPartyMessage(guild, updated);
+      await writePartyLog(guild, {
+        title: "↩️ 대기 해제",
+        color: 0xf39c12,
+        party: updated,
+        actorId: interaction.user.id,
+      });
+    }
     return true;
   }
 
@@ -874,11 +984,24 @@ async function handleParty(interaction) {
     const after = await getParty(msgId);
 
     if (!after || (after.members?.length ?? 0) === 0) {
+      await writePartyLog(guild, {
+        title: "➖ 파티 탈퇴",
+        color: 0xe67e22,
+        party,
+        actorId: interaction.user.id,
+        fields: [field("결과", "전원 이탈로 자동 종료")],
+      });
       await endParty(guild, party, "전원 이탈(자동종료)", interaction.message);
       return true;
     }
 
     await refreshPartyMessage(guild, after);
+    await writePartyLog(guild, {
+      title: "➖ 파티 탈퇴",
+      color: 0xe67e22,
+      party: after,
+      actorId: interaction.user.id,
+    });
     return true;
   }
 
@@ -917,7 +1040,15 @@ async function handleParty(interaction) {
     await ackUpdate(interaction);
     await upsertParty({ ...party, status: "PLAYING", mode: "TEXT", start_at: 0 });
     const updated = await getParty(msgId);
-    if (updated) await refreshPartyMessage(guild, updated);
+    if (updated) {
+      await refreshPartyMessage(guild, updated);
+      await writePartyLog(guild, {
+        title: "🟢 파티 시작",
+        color: 0x2ecc71,
+        party: updated,
+        actorId: interaction.user.id,
+      });
+    }
     return true;
   }
 
@@ -930,6 +1061,13 @@ async function handleParty(interaction) {
     }
 
     await ackUpdate(interaction);
+    await writePartyLog(guild, {
+      title: "⚫ 파티 종료",
+      color: 0x7f8c8d,
+      party,
+      actorId: interaction.user.id,
+      fields: [field("사유", "수동 종료")],
+    });
     await endParty(guild, party, "수동 종료", interaction.message);
     return true;
   }
@@ -944,6 +1082,12 @@ async function handleParty(interaction) {
     await ackUpdate(interaction);
 
     try {
+      await writePartyLog(guild, {
+        title: "🗑️ 파티 삭제",
+        color: 0xc0392b,
+        party,
+        actorId: interaction.user.id,
+      });
       await interaction.message.delete();
       await deleteParty(msgId);
     } catch {
