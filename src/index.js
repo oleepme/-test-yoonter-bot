@@ -7,20 +7,22 @@ const {
   DISCORD_TOKEN,
   GUILD_ID,
   NICK_HELP_CHANNEL_ID,
-  ENABLE_NICK
+  ENABLE_NICK,
+  ENABLE_PARTY,
 } = require("./config");
 
 const { nicknameBoardComponents } = require("./features/nickname/ui");
 const { handleNickname } = require("./features/nickname/handler");
 const { handleParty } = require("./party/handler");
 const { initWelcomeFeature, bindWelcomeEvents } = require("./features/welcome/handler");
+
 const { getAllBoardConfigs } = require("./party/channelConfig");
-const { buildBoardEmbed, buildBoardComponents } = require("./party/ui");
+const { partyBoardEmbed, partyBoardComponents } = require("./party/ui");
 
 console.log("BOOT_OK");
 
 const client = new Client({
-  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers]
+  intents: [GatewayIntentBits.Guilds, GatewayIntentBits.GuildMembers],
 });
 
 const PORT = process.env.PORT || 3000;
@@ -43,7 +45,7 @@ function normalizeMessages(raw) {
 }
 
 async function ensurePinnedMessage(channel, matcher, payloadBuilder) {
-  // 1) pinned 메시지 먼저 검색
+  // 1) pin 메시지 먼저
   const pinsRaw = await channel.messages.fetchPins().catch((e) => {
     console.error("PIN_FETCH_FAIL", e);
     return null;
@@ -51,12 +53,11 @@ async function ensurePinnedMessage(channel, matcher, payloadBuilder) {
 
   const pins = normalizeMessages(pinsRaw);
   const pinnedMatch = pins.find((m) => matcher(m));
-
   if (pinnedMatch) {
     console.log("PIN_REUSED", {
       channelId: channel.id,
       source: "pins",
-      messageId: pinnedMatch.id
+      messageId: pinnedMatch.id,
     });
     return pinnedMatch;
   }
@@ -74,7 +75,7 @@ async function ensurePinnedMessage(channel, matcher, payloadBuilder) {
     console.log("PIN_REUSED", {
       channelId: channel.id,
       source: "recent",
-      messageId: recentMatch.id
+      messageId: recentMatch.id,
     });
 
     await recentMatch.pin().catch((e) => {
@@ -84,7 +85,7 @@ async function ensurePinnedMessage(channel, matcher, payloadBuilder) {
     return recentMatch;
   }
 
-  // 3) 진짜 없을 때만 새 생성
+  // 3) 진짜 없을 때만 생성
   const payload = payloadBuilder();
   const msg = await channel.send(payload).catch((e) => {
     console.error("PIN_MESSAGE_SEND_FAIL", e);
@@ -99,7 +100,7 @@ async function ensurePinnedMessage(channel, matcher, payloadBuilder) {
 
   console.log("PIN_CREATED", {
     channelId: channel.id,
-    messageId: msg.id
+    messageId: msg.id,
   });
 
   return msg;
@@ -114,35 +115,45 @@ async function onReady() {
 
   await initWelcomeFeature(guild);
 
-  // 게임별 파티 게시판 고정 메시지 보장
-  for (const config of getAllBoardConfigs()) {
-    const board = await guild.channels.fetch(config.channelId).catch((e) => {
-      console.error("PARTY_BOARD_FETCH_FAIL", config.channelId, e);
-      return null;
-    });
+  // 게임별 게시판 고정 메시지 보장
+  if (ENABLE_PARTY) {
+    for (const boardConfig of getAllBoardConfigs()) {
+      const board = await guild.channels.fetch(boardConfig.channelId).catch((e) => {
+        console.error("PARTY_BOARD_FETCH_FAIL", boardConfig.channelId, e);
+        return null;
+      });
 
-    if (!board?.isTextBased()) {
-      console.error("PARTY_BOARD_INVALID", config.channelId);
-      continue;
+      if (!board?.isTextBased()) {
+        console.error("PARTY_BOARD_INVALID", boardConfig.channelId);
+        continue;
+      }
+
+      await ensurePinnedMessage(
+        board,
+        (message) => {
+          const embed = message.embeds?.[0];
+          if (!embed || embed.title !== boardConfig.boardTitle) return false;
+
+          if (boardConfig.allowedKinds?.length > 1) {
+            return (
+              hasCustomId(message, "party:create:GAME") &&
+              hasCustomId(message, "party:create:MOVIE") &&
+              hasCustomId(message, "party:create:CHAT") &&
+              hasCustomId(message, "party:create:MUSIC")
+            );
+          }
+
+          return hasCustomId(message, "party:create:GAME");
+        },
+        () => ({
+          embeds: [partyBoardEmbed(boardConfig)],
+          components: partyBoardComponents(boardConfig),
+        })
+      );
     }
-
-    await ensurePinnedMessage(
-      board,
-      (message) => {
-        const embed = message.embeds?.[0];
-        return (
-          embed?.title === config.boardTitle &&
-          hasCustomId(message, "party:create")
-        );
-      },
-      () => ({
-        embeds: [buildBoardEmbed(config)],
-        components: buildBoardComponents(config)
-      })
-    );
   }
 
-  // 닉네임 안내 고정 메시지 보장
+  // 닉네임 안내 메시지 고정 보장
   if (ENABLE_NICK && NICK_HELP_CHANNEL_ID) {
     const nickCh = await guild.channels.fetch(NICK_HELP_CHANNEL_ID).catch((e) => {
       console.error("NICK_HELP_CHANNEL_FETCH_FAIL", e);
@@ -163,10 +174,10 @@ async function onReady() {
           embeds: [
             {
               title: "🪪 닉네임 설정",
-              description: "아래 버튼으로 서버 별명을 변경합니다."
-            }
+              description: "아래 버튼으로 서버 별명을 변경합니다.",
+            },
           ],
-          components: nicknameBoardComponents()
+          components: nicknameBoardComponents(),
         })
       );
     } else {
@@ -197,7 +208,7 @@ client.on("interactionCreate", async (interaction) => {
       if (handled) return;
     }
 
-    {
+    if (ENABLE_PARTY) {
       const handled = await handleParty(interaction);
       if (handled) return;
     }
@@ -209,12 +220,12 @@ client.on("interactionCreate", async (interaction) => {
         if (interaction.deferred || interaction.replied) {
           await interaction.followUp({
             content: "⚠️ 오류가 발생했습니다. 로그를 확인해주세요.",
-            ephemeral: true
+            ephemeral: true,
           });
         } else {
           await interaction.reply({
             content: "⚠️ 오류가 발생했습니다. 로그를 확인해주세요.",
-            ephemeral: true
+            ephemeral: true,
           });
         }
       } catch (replyError) {
