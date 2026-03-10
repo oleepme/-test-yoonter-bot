@@ -69,14 +69,13 @@ async function doneModal(interaction) {
 async function deleteCreatePrompt(client, draft) {
   try {
     if (!draft?.originApplicationId || !draft?.originToken) return;
-
-    const route = draft.originMessageId
-      ? `/webhooks/${draft.originApplicationId}/${draft.originToken}/messages/${draft.originMessageId}`
-      : `/webhooks/${draft.originApplicationId}/${draft.originToken}/messages/@original`;
-
-    await client.rest.delete(route).catch(() => {});
+    const messageId = draft.originMessageId || "@original";
+    await client.rest.delete(
+      `/webhooks/${draft.originApplicationId}/${draft.originToken}/messages/${messageId}`
+    ).catch(() => {});
   } catch {}
 }
+
 
 async function ephemeralError(interaction, content) {
   try {
@@ -372,12 +371,13 @@ async function handleParty(interaction) {
 
       const replyMsg = await interaction.fetchReply().catch(() => null);
       if (replyMsg?.id) {
-        const current = createDraft.get(interaction.user.id);
-        if (current) {
-          current.originMessageId = replyMsg.id;
-          createDraft.set(interaction.user.id, current);
+        const d = createDraft.get(interaction.user.id);
+        if (d) {
+          d.originMessageId = replyMsg.id;
+          createDraft.set(interaction.user.id, d);
         }
       }
+
       return true;
     }
 
@@ -396,15 +396,9 @@ async function handleParty(interaction) {
     d.subKind = interaction.values[0];
     createDraft.set(interaction.user.id, d);
 
-    // 기존 ephemeral 선택창을 사실상 종료 상태로 바꿈
-    await interaction.update({
-      content: "선택 완료",
-      components: [],
-    }).catch(() => {});
-
-    // update 이후에는 showModal 불가라 followUp 안내 대신
-    // 바로 다음 interaction으로 못 넘기므로 여기서는 다시 모달을 띄울 수 없다.
-    // 따라서 select는 reply 방식으로 유지해야 한다.
+    await interaction.showModal(createPartyModal("GAME")).catch((err) => {
+      console.error("[SHOW_MODAL_ERR]", err);
+    });
     return true;
   }
 
