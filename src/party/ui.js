@@ -27,6 +27,12 @@ function kindIcon(kind) {
   return "🎮";
 }
 
+function isFixedTitleGameBoard(boardConfig, kind) {
+  if (kind !== "GAME") return false;
+  const key = (boardConfig?.key || "").toUpperCase();
+  return key === "LOL" || key === "PUBG" || key === "VALORANT" || key === "OVERWATCH";
+}
+
 function partyBoardEmbed(boardConfig) {
   return new EmbedBuilder()
     .setColor(0x95a5a6)
@@ -37,7 +43,6 @@ function partyBoardEmbed(boardConfig) {
 function partyBoardComponents(boardConfig) {
   const cfg = boardConfig || { allowedKinds: ["GAME"] };
 
-  // 기타 게시판만 4버튼
   if (cfg.allowedKinds?.length > 1) {
     return [
       new ActionRowBuilder().addComponents(
@@ -49,7 +54,6 @@ function partyBoardComponents(boardConfig) {
     ];
   }
 
-  // 나머지 채널은 게임파티 만들기 1버튼
   return [
     new ActionRowBuilder().addComponents(
       new ButtonBuilder()
@@ -60,14 +64,19 @@ function partyBoardComponents(boardConfig) {
   ];
 }
 
-function createPartyModal(kind) {
+function createPartyModal(kind, boardConfig) {
   const modal = new ModalBuilder().setCustomId(`party:create:submit:${kind}`).setTitle(`새 ${kindLabel(kind)} 파티`);
+  const rows = [];
 
-  const title = new TextInputBuilder()
-    .setCustomId("title")
-    .setLabel(isUnlimitedKind(kind) ? "제목(선택)" : "제목(필수)")
-    .setStyle(TextInputStyle.Short)
-    .setRequired(!isUnlimitedKind(kind));
+  if (!isFixedTitleGameBoard(boardConfig, kind)) {
+    const title = new TextInputBuilder()
+      .setCustomId("title")
+      .setLabel(isUnlimitedKind(kind) ? "제목(선택)" : "제목(필수)")
+      .setStyle(TextInputStyle.Short)
+      .setRequired(!isUnlimitedKind(kind));
+
+    rows.push(new ActionRowBuilder().addComponents(title));
+  }
 
   const note = new TextInputBuilder()
     .setCustomId("note")
@@ -81,8 +90,7 @@ function createPartyModal(kind) {
     .setStyle(TextInputStyle.Short)
     .setRequired(false);
 
-  modal.addComponents(
-    new ActionRowBuilder().addComponents(title),
+  rows.push(
     new ActionRowBuilder().addComponents(note),
     new ActionRowBuilder().addComponents(time),
   );
@@ -94,23 +102,28 @@ function createPartyModal(kind) {
       .setStyle(TextInputStyle.Short)
       .setRequired(true);
 
-    modal.addComponents(new ActionRowBuilder().addComponents(max));
+    rows.push(new ActionRowBuilder().addComponents(max));
   }
 
+  modal.addComponents(...rows);
   return modal;
 }
 
-function editPartyModal(msgId, party, _isAdminEdit) {
+function editPartyModal(msgId, party, boardConfig, _isAdminEdit) {
   const kind = party?.kind || "GAME";
-
   const modal = new ModalBuilder().setCustomId(`party:edit:submit:${msgId}`).setTitle("파티 수정");
+  const rows = [];
 
-  const title = new TextInputBuilder()
-    .setCustomId("title")
-    .setLabel(isUnlimitedKind(kind) ? "제목(선택)" : "제목(필수)")
-    .setStyle(TextInputStyle.Short)
-    .setRequired(!isUnlimitedKind(kind))
-    .setValue((party?.title ?? "").toString());
+  if (!isFixedTitleGameBoard(boardConfig, kind)) {
+    const title = new TextInputBuilder()
+      .setCustomId("title")
+      .setLabel(isUnlimitedKind(kind) ? "제목(선택)" : "제목(필수)")
+      .setStyle(TextInputStyle.Short)
+      .setRequired(!isUnlimitedKind(kind))
+      .setValue((party?.title ?? "").toString());
+
+    rows.push(new ActionRowBuilder().addComponents(title));
+  }
 
   const note = new TextInputBuilder()
     .setCustomId("note")
@@ -126,8 +139,7 @@ function editPartyModal(msgId, party, _isAdminEdit) {
     .setRequired(false)
     .setValue((party?.time_text ?? "").toString());
 
-  modal.addComponents(
-    new ActionRowBuilder().addComponents(title),
+  rows.push(
     new ActionRowBuilder().addComponents(note),
     new ActionRowBuilder().addComponents(time),
   );
@@ -140,9 +152,10 @@ function editPartyModal(msgId, party, _isAdminEdit) {
       .setRequired(true)
       .setValue(String(party?.max_players ?? 4));
 
-    modal.addComponents(new ActionRowBuilder().addComponents(max));
+    rows.push(new ActionRowBuilder().addComponents(max));
   }
 
+  modal.addComponents(...rows);
   return modal;
 }
 
@@ -218,4 +231,5 @@ module.exports = {
   kindLabel,
   kindIcon,
   isUnlimitedKind,
+  isFixedTitleGameBoard,
 };
