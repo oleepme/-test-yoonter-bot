@@ -15,7 +15,7 @@ function getLiveUsername(memberLike) {
 }
 
 function getLiveMention(memberLike) {
-  return memberLike?.id ? `<@${memberLike.id}>` : "@알 수 없음";
+  return memberLike?.id ? `<@${memberLike.id}>` : "(알 수 없음)";
 }
 
 function getLiveRoleNames(memberLike) {
@@ -36,8 +36,13 @@ function buildWelcomeEmbed({ title, beforeCount, afterCount, memberLike }) {
 
   return new EmbedBuilder()
     .setColor(0x5865f2)
-    .setTitle(`${title} (${beforeCount} → ${afterCount})`)
-    .setDescription(`${nickname} · ${username} (${mention})\n${roleNames}`)
+    .setDescription(
+      [
+        `## **${title}** (${beforeCount} → ${afterCount})`,
+        `**${nickname} · ${username} (${mention})**`,
+        `\`${roleNames}\``,
+      ].join("\n")
+    )
     .setTimestamp();
 }
 
