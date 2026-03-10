@@ -10,61 +10,79 @@ const {
 } = require("discord.js");
 const { buildMeta } = require("./meta");
 
-const KIND_OPTIONS = [
-  { label: "게임", value: "게임", emoji: "🎮" },
-  { label: "노래", value: "노래", emoji: "🎵" },
-  { label: "영화", value: "영화", emoji: "🎬" },
-  { label: "수다", value: "수다", emoji: "💬" }
-];
-
-function partyBoardEmbed() {
+function buildBoardEmbed(config) {
   return new EmbedBuilder()
     .setColor(0x95a5a6)
-    .setTitle("📌 파티 현황판")
-    .setDescription([
-      "아래 버튼으로 파티를 생성합니다.",
-      "- 상시 운영",
-      "- 종료 버튼 누르면 삭제",
-      "- 상세 로그는 운영진 채널에만 기록"
-    ].join("\n"));
+    .setTitle(config.boardTitle)
+    .setDescription("아래 버튼을 눌러 파티를 생성합니다.");
 }
 
-function partyBoardComponents() {
+function buildBoardComponents(config) {
   return [
     new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId("party:create").setLabel("➕ 새 파티 만들기").setStyle(ButtonStyle.Success)
+      new ButtonBuilder()
+        .setCustomId("party:create")
+        .setLabel(`➕ ${config.createLabel}`)
+        .setStyle(ButtonStyle.Success)
     )
   ];
 }
 
-function kindSelectRow() {
+function buildSubTypeSelectRow(config) {
   return new ActionRowBuilder().addComponents(
     new StringSelectMenuBuilder()
-      .setCustomId("party:draft:kind")
-      .setPlaceholder("카테고리 1 선택")
-      .addOptions(KIND_OPTIONS.map((o) => ({ label: o.label, value: o.value, emoji: o.emoji })))
+      .setCustomId("party:draft:subtype")
+      .setPlaceholder("세부 항목을 선택하세요")
+      .addOptions(
+        config.subTypes.map((value) => ({
+          label: value,
+          value
+        }))
+      )
   );
 }
 
-function detailsModal() {
-  const modal = new ModalBuilder().setCustomId("party:draft:details").setTitle("파티 정보 입력");
-
-  const title = new TextInputBuilder()
-    .setCustomId("title")
-    .setLabel("카테고리 2: 게임/종류")
-    .setStyle(TextInputStyle.Short)
-    .setRequired(true);
+function buildDetailsModal(config) {
+  const modal = new ModalBuilder()
+    .setCustomId("party:draft:details")
+    .setTitle("파티 정보 입력");
 
   const note = new TextInputBuilder()
     .setCustomId("note")
-    .setLabel("카테고리 3: 특이사항(선택)")
+    .setLabel("특이사항(선택)")
     .setStyle(TextInputStyle.Paragraph)
     .setRequired(false);
 
-  modal.addComponents(
-    new ActionRowBuilder().addComponents(title),
-    new ActionRowBuilder().addComponents(note)
-  );
+  if (config.titleInputMode === "gameTitle") {
+    const gameTitle = new TextInputBuilder()
+      .setCustomId("title")
+      .setLabel("게임명 입력")
+      .setStyle(TextInputStyle.Short)
+      .setRequired(true);
+
+    modal.addComponents(
+      new ActionRowBuilder().addComponents(gameTitle),
+      new ActionRowBuilder().addComponents(note)
+    );
+    return modal;
+  }
+
+  if (config.titleInputMode === "freeTitle") {
+    const freeTitle = new TextInputBuilder()
+      .setCustomId("title")
+      .setLabel("제목 또는 게임명 입력")
+      .setStyle(TextInputStyle.Short)
+      .setRequired(true);
+
+    modal.addComponents(
+      new ActionRowBuilder().addComponents(freeTitle),
+      new ActionRowBuilder().addComponents(note)
+    );
+    return modal;
+  }
+
+  // 롤/배그/발로/옵치: 제목 직접입력 없음
+  modal.addComponents(new ActionRowBuilder().addComponents(note));
   return modal;
 }
 
@@ -126,50 +144,53 @@ function joinNoteModal(msgId) {
 }
 
 function statusLabel(status) {
-  return status === "PLAYING" ? "🟢 게임중" : "🔴 모집중";
+  if (status === "PLAYING") return "🟢 플레이중";
+  if (status === "END") return "⚫ 종료";
+  return "🔴 모집중";
 }
 
-function buildPartyEmbed({ ownerId, ownerRoleLabel, kind, title, note, mode, startAtUnix, status, members }) {
-  const kindEmoji = KIND_OPTIONS.find((o) => o.value === kind)?.emoji ?? "📌";
+function buildPartyEmbed({
+  ownerId,
+  ownerRoleLabel,
+  displayTitle,
+  note,
+  mode,
+  startAtUnix,
+  status,
+  members,
+  meta
+}) {
   const startLine = mode === "ASAP"
     ? "⚡ 모이면 바로 시작"
     : `🕒 <t:${startAtUnix}:F> ( <t:${startAtUnix}:R> )`;
 
   const noteLine = note?.trim() ? note.trim() : "(없음)";
   const memberLines = (members?.length ? members : [{ userId: ownerId, note: "" }])
-    .map((m) => `- <@${m.userId}>${m.note ? ` — ${m.note}` : ""}`)
+    .map((m, idx) => `${idx + 1}. <@${m.userId}>${m.note ? ` — ${m.note}` : ""}`)
     .join("\n");
 
   return new EmbedBuilder()
     .setColor(status === "PLAYING" ? 0x2ecc71 : 0xe74c3c)
-    .setTitle(`${kindEmoji} ${kind}`)
-    .setDescription([
-      `🎯 **${title}**`,
-      ownerRoleLabel ? `👤 파티장: <@${ownerId}> (${ownerRoleLabel})` : `👤 파티장: <@${ownerId}>`
-    ].join("\n"))
+    .setTitle(displayTitle)
+    .setDescription(
+      ownerRoleLabel
+        ? `👤 파티장: <@${ownerId}> (${ownerRoleLabel})`
+        : `👤 파티장: <@${ownerId}>`
+    )
     .addFields(
       { name: "상태", value: statusLabel(status), inline: true },
-      { name: "시작", value: startLine, inline: true },
-      { name: "특이사항", value: noteLine, inline: false },
+      { name: "시간", value: startLine, inline: true },
+      { name: "주문서 특이사항", value: noteLine, inline: false },
       { name: "참가자", value: memberLines, inline: false }
     )
-    .setFooter({
-      text: buildMeta({
-        owner: ownerId,
-        ownerRole: ownerRoleLabel || "",
-        kind,
-        mode,
-        startAt: String(startAtUnix),
-        status
-      })
-    });
+    .setFooter({ text: buildMeta(meta) });
 }
 
 module.exports = {
-  partyBoardEmbed,
-  partyBoardComponents,
-  kindSelectRow,
-  detailsModal,
+  buildBoardEmbed,
+  buildBoardComponents,
+  buildSubTypeSelectRow,
+  buildDetailsModal,
   timeModeRow,
   hourSelectRow,
   minuteSelectRow,
