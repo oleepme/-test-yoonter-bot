@@ -5,79 +5,77 @@ const {
   OW_BOARD_CHANNEL_ID,
   STEAM_BOARD_CHANNEL_ID,
   ETC_BOARD_CHANNEL_ID,
+
   ROLE_LOL_ID,
   ROLE_PUBG_ID,
   ROLE_VALO_ID,
   ROLE_OW_ID,
   ROLE_STEAM_HORROR_ID,
   ROLE_STEAM_COOP_ID,
-  ROLE_STEAM_OPENWORLD_ID
+  ROLE_STEAM_OPENWORLD_ID,
 } = require("../config");
 
 const BOARD_CONFIGS = [
   {
+    key: "LOL",
     channelId: LOL_BOARD_CHANNEL_ID,
-    gameKey: "LOL",
     boardTitle: "🏔️ 롤 구인하기",
-    createLabel: "게임파티 만들기",
-    displayPrefix: "롤",
-    subTypes: ["협곡", "증칼", "롤체"],
+    allowedKinds: ["GAME"],
+    createButtonLabel: "게임파티 만들기",
+    partyPrefix: "롤",
     mentionRoleId: ROLE_LOL_ID,
-    titleInputMode: "none"
   },
   {
+    key: "PUBG",
     channelId: PUBG_BOARD_CHANNEL_ID,
-    gameKey: "PUBG",
     boardTitle: "🪖 배그 구인하기",
-    createLabel: "게임파티 만들기",
-    displayPrefix: "배그",
-    subTypes: ["일반", "경쟁"],
+    allowedKinds: ["GAME"],
+    createButtonLabel: "게임파티 만들기",
+    partyPrefix: "배그",
     mentionRoleId: ROLE_PUBG_ID,
-    titleInputMode: "none"
   },
   {
+    key: "VALO",
     channelId: VALO_BOARD_CHANNEL_ID,
-    gameKey: "VALO",
     boardTitle: "👣 발로란트 구인하기",
-    createLabel: "게임파티 만들기",
-    displayPrefix: "발로란트",
-    subTypes: ["일반", "경쟁", "신속"],
+    allowedKinds: ["GAME"],
+    createButtonLabel: "게임파티 만들기",
+    partyPrefix: "발로란트",
     mentionRoleId: ROLE_VALO_ID,
-    titleInputMode: "none"
   },
   {
+    key: "OW",
     channelId: OW_BOARD_CHANNEL_ID,
-    gameKey: "OW",
     boardTitle: "🔫 오버워치 구인하기",
-    createLabel: "게임파티 만들기",
-    displayPrefix: "오버워치",
-    subTypes: ["빠대", "경쟁"],
+    allowedKinds: ["GAME"],
+    createButtonLabel: "게임파티 만들기",
+    partyPrefix: "오버워치",
     mentionRoleId: ROLE_OW_ID,
-    titleInputMode: "none"
   },
   {
+    key: "STEAM",
     channelId: STEAM_BOARD_CHANNEL_ID,
-    gameKey: "STEAM",
     boardTitle: "🕹️ 스팀게임 구인하기",
-    createLabel: "게임파티 만들기",
-    displayPrefix: "스팀",
-    subTypes: ["공포", "협동", "오픈월드"],
-    mentionRoleBySubType: {
-      "공포": ROLE_STEAM_HORROR_ID,
-      "협동": ROLE_STEAM_COOP_ID,
-      "오픈월드": ROLE_STEAM_OPENWORLD_ID
-    },
-    titleInputMode: "gameTitle"
+    allowedKinds: ["GAME"],
+    createButtonLabel: "게임파티 만들기",
+    partyPrefix: "스팀",
+    // 스팀은 제목 입력값으로 [스팀] 게임명 형태로 두고,
+    // 역할 멘션은 제목 앞머리 키워드 또는 운영 규칙으로 추후 확장 가능.
+    mentionRoleByTitle: [
+      { includes: "공포", roleId: ROLE_STEAM_HORROR_ID },
+      { includes: "협동", roleId: ROLE_STEAM_COOP_ID },
+      { includes: "오픈월드", roleId: ROLE_STEAM_OPENWORLD_ID },
+    ],
   },
   {
+    key: "ETC",
     channelId: ETC_BOARD_CHANNEL_ID,
-    gameKey: "ETC",
     boardTitle: "🥰 기타게임 구인하기",
-    createLabel: "파티 만들기",
-    displayPrefix: "기타",
-    subTypes: ["게임", "노래", "수다", "영화"],
-    titleInputMode: "freeTitle"
-  }
+    allowedKinds: ["GAME", "MUSIC", "CHAT", "MOVIE"],
+    createButtonLabel: null,
+    partyPrefix: "기타",
+    mentionRoleId: "",
+  },
 ].filter((x) => x.channelId);
 
 function getBoardConfigByChannelId(channelId) {
@@ -88,30 +86,37 @@ function getAllBoardConfigs() {
   return BOARD_CONFIGS;
 }
 
-function getMentionRoleId(config, subType) {
-  if (!config) return null;
+function getMentionRoleId(config, title = "") {
+  if (!config) return "";
   if (config.mentionRoleId) return config.mentionRoleId;
-  if (config.mentionRoleBySubType) return config.mentionRoleBySubType[subType] ?? null;
-  return null;
+
+  const text = String(title || "");
+  if (Array.isArray(config.mentionRoleByTitle)) {
+    const found = config.mentionRoleByTitle.find((x) => text.includes(x.includes) && x.roleId);
+    return found?.roleId || "";
+  }
+
+  return "";
 }
 
-function buildPartyDisplayTitle({ config, subType, title }) {
-  if (!config) return title || "파티";
+function buildDisplayTitle(config, title, kind) {
+  const clean = String(title || "").trim() || "(제목없음)";
 
-  if (config.gameKey === "STEAM") {
-    return `[스팀-${subType}] ${title}`;
+  if (!config) return clean;
+
+  if (config.key === "ETC") {
+    if (kind === "MUSIC") return `[기타-노래] ${clean}`;
+    if (kind === "CHAT") return `[기타-수다] ${clean}`;
+    if (kind === "MOVIE") return `[기타-영화] ${clean}`;
+    return `[기타-게임] ${clean}`;
   }
 
-  if (config.gameKey === "ETC") {
-    return `[기타-${subType}] ${title}`;
-  }
-
-  return `[${config.displayPrefix}] ${subType}`;
+  return `[${config.partyPrefix}] ${clean}`;
 }
 
 module.exports = {
   getBoardConfigByChannelId,
   getAllBoardConfigs,
   getMentionRoleId,
-  buildPartyDisplayTitle
+  buildDisplayTitle,
 };
