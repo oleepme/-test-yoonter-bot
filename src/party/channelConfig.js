@@ -24,6 +24,7 @@ const BOARD_CONFIGS = [
     createButtonLabel: "게임파티 만들기",
     partyPrefix: "롤",
     mentionRoleId: ROLE_LOL_ID,
+    gameSubKinds: ["협곡", "칼바람", "롤토체스"],
   },
   {
     key: "PUBG",
@@ -33,6 +34,7 @@ const BOARD_CONFIGS = [
     createButtonLabel: "게임파티 만들기",
     partyPrefix: "배그",
     mentionRoleId: ROLE_PUBG_ID,
+    gameSubKinds: ["일반", "경쟁"],
   },
   {
     key: "VALO",
@@ -42,6 +44,7 @@ const BOARD_CONFIGS = [
     createButtonLabel: "게임파티 만들기",
     partyPrefix: "발로란트",
     mentionRoleId: ROLE_VALO_ID,
+    gameSubKinds: ["일반", "경쟁", "신속"],
   },
   {
     key: "OW",
@@ -51,6 +54,7 @@ const BOARD_CONFIGS = [
     createButtonLabel: "게임파티 만들기",
     partyPrefix: "오버워치",
     mentionRoleId: ROLE_OW_ID,
+    gameSubKinds: ["빠대", "경쟁"],
   },
   {
     key: "STEAM",
@@ -59,13 +63,13 @@ const BOARD_CONFIGS = [
     allowedKinds: ["GAME"],
     createButtonLabel: "게임파티 만들기",
     partyPrefix: "스팀",
-    // 스팀은 제목 입력값으로 [스팀] 게임명 형태로 두고,
-    // 역할 멘션은 제목 앞머리 키워드 또는 운영 규칙으로 추후 확장 가능.
     mentionRoleByTitle: [
       { includes: "공포", roleId: ROLE_STEAM_HORROR_ID },
       { includes: "협동", roleId: ROLE_STEAM_COOP_ID },
       { includes: "오픈월드", roleId: ROLE_STEAM_OPENWORLD_ID },
     ],
+    // 스팀은 세부 카테고리를 제목 앞에 붙여 입력하는 방식 유지
+    gameSubKinds: ["공포", "협동", "오픈월드"],
   },
   {
     key: "ETC",
@@ -75,6 +79,7 @@ const BOARD_CONFIGS = [
     createButtonLabel: null,
     partyPrefix: "기타",
     mentionRoleId: "",
+    gameSubKinds: [], // 기타-게임 세부 카테고리 삭제
   },
 ].filter((x) => x.channelId);
 

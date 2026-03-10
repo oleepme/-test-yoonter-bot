@@ -35,23 +35,12 @@ const {
   buildDisplayTitle,
 } = require("./channelConfig");
 
-const HANDLER_BUILD = "2026-03-10-party-board-split-final-v1";
+const HANDLER_BUILD = "2026-03-10-party-board-split-final-v2";
 console.log("[HANDLER_BUILD]", HANDLER_BUILD);
 
 const ERROR_EPHEMERAL_MS = 8000;
 const WAIT_PREFIX = "__WAIT__:";
 const createDraft = new Map();
-
-// 기타-게임 버튼 눌렀을 때 1회 보여줄 세부 카테고리
-const ETC_GAME_SUBKINDS = [
-  "RPG",
-  "생존",
-  "공포",
-  "협동",
-  "FPS",
-  "캐주얼",
-  "기타",
-];
 
 // ---------- 공용 ----------
 function isAdmin(interaction) {
@@ -169,7 +158,6 @@ async function getDisplayNameByUserId(guild, userId) {
 }
 
 async function buildParticipants(guild, party) {
-  const members = Array.isArray(party.members) ? party.members : [];
   const playing = playingMembers(party);
   const waiting = waitingMembers(party);
 
@@ -247,7 +235,6 @@ async function buildPartyEmbed(guild, party) {
       name: `${statusLabel(party.status)}\n${icon} ${label}`,
     },
 
-    // 첨부 이미지처럼 큰 제목은 임베드 안에서
     description: `## **${bigTitle}**`,
 
     fields: [
@@ -291,7 +278,7 @@ async function refreshPartyMessage(guild, party) {
   await msg.edit({
     embeds: [embed],
     components,
-    allowedMentions: { parse: [] }, // 수정 시 재멘션 금지
+    allowedMentions: { parse: [] },
   }).catch(() => {});
 }
 
@@ -336,13 +323,13 @@ async function endParty(guild, party, reason, message) {
   });
 }
 
-function createEtcGameSubkindRow() {
+function createGameSubKindRow(boardConfig) {
   return new ActionRowBuilder().addComponents(
     new StringSelectMenuBuilder()
-      .setCustomId("party:create:etcgame:subkind")
+      .setCustomId("party:create:game:subkind")
       .setPlaceholder("게임 세부 카테고리 선택")
       .addOptions(
-        ETC_GAME_SUBKINDS.map((x) => ({
+        (boardConfig.gameSubKinds || []).map((x) => ({
           label: x,
           value: x,
         }))
@@ -413,8 +400,14 @@ async function handleParty(interaction) {
       return true;
     }
 
-    // 기타-게임만 1회 드롭다운 → 모달
+    // 기타-게임은 이제 바로 모달 (세부 카테고리 삭제)
     if (boardConfig.key === "ETC" && kind === "GAME") {
+      await interaction.showModal(createPartyModal(kind)).catch(() => {});
+      return true;
+    }
+
+    // 일반 게임 게시판은 세부 카테고리 1회 선택
+    if (kind === "GAME" && Array.isArray(boardConfig.gameSubKinds) && boardConfig.gameSubKinds.length > 0) {
       createDraft.set(interaction.user.id, {
         boardChannelId: interaction.channelId,
         kind,
@@ -422,7 +415,7 @@ async function handleParty(interaction) {
 
       await interaction.reply({
         content: "게임 세부 카테고리를 선택하세요.",
-        components: [createEtcGameSubkindRow()],
+        components: [createGameSubKindRow(boardConfig)],
         ephemeral: true,
       }).catch(() => {});
       return true;
@@ -432,8 +425,8 @@ async function handleParty(interaction) {
     return true;
   }
 
-  // 0-1) 기타-게임 세부 카테고리 선택
-  if (interaction.isStringSelectMenu() && interaction.customId === "party:create:etcgame:subkind") {
+  // 0-1) 게임 세부 카테고리 선택
+  if (interaction.isStringSelectMenu() && interaction.customId === "party:create:game:subkind") {
     const d = createDraft.get(interaction.user.id);
     if (!d || d.boardChannelId !== interaction.channelId || d.kind !== "GAME") {
       await ephemeralError(interaction, "생성 세션이 만료되었습니다. 다시 버튼을 눌러주세요.");
@@ -476,8 +469,14 @@ async function handleParty(interaction) {
       }
 
       const draft = createDraft.get(interaction.user.id);
-      if (boardConfig.key === "ETC" && kind === "GAME" && draft?.subKind) {
-        title = title ? `${draft.subKind} · ${title}` : draft.subKind;
+
+      // 일반 게임 게시판은 세부 카테고리를 제목 앞에 붙임
+      if (
+        kind === "GAME" &&
+        boardConfig.key !== "ETC" &&
+        draft?.subKind
+      ) {
+        title = draft.subKind;
       }
 
       if (!isUnlimitedKind(kind) && !title) {
@@ -497,7 +496,6 @@ async function handleParty(interaction) {
 
       const mentionRoleId = getMentionRoleId(boardConfig, title);
 
-      // 생성 시만 1회 멘션
       const msg = await board.send({
         content: mentionRoleId ? `<@&${mentionRoleId}>` : undefined,
         embeds: [buildCreatingEmbed(kind)],
@@ -535,6 +533,7 @@ async function handleParty(interaction) {
           field("종류", kindLabel(kind), true),
           field("제목", title || "(제목 없음)"),
           field("시간", time || "모이면 바로 시작"),
+          field("멘션 역할", mentionRoleId ? `<@&${mentionRoleId}>` : "(없음)"),
         ],
       });
 
@@ -718,15 +717,6 @@ async function handleParty(interaction) {
       const updated = await getParty(msgId);
       if (updated) await refreshPartyMessage(guild, updated);
 
-      await logEmbed(guild, {
-        title: "➕ 참가/비고 변경",
-        fields: [
-          field("파티 메시지 ID", msgId, true),
-          field("유저", `<@${interaction.user.id}>`, true),
-          field("비고", finalNote || "(없음)"),
-        ],
-      });
-
       await doneModal(interaction);
       return true;
     } catch {
@@ -806,15 +796,6 @@ async function handleParty(interaction) {
 
       const updated = await getParty(msgId);
       if (updated) await refreshPartyMessage(guild, updated);
-
-      await logEmbed(guild, {
-        title: "✏️ 파티 수정",
-        fields: [
-          field("파티 메시지 ID", msgId, true),
-          field("수정자", `<@${interaction.user.id}>`, true),
-          field("제목", title || "(제목 없음)"),
-        ],
-      });
 
       await doneModal(interaction);
       return true;
@@ -931,7 +912,6 @@ async function handleParty(interaction) {
   return false;
 }
 
-// index.js 연동용
 async function syncOrderMessage(guild, messageId) {
   const party = await getParty(messageId);
   if (!party) return;
