@@ -1,6 +1,10 @@
 const { EmbedBuilder } = require("discord.js");
 const { getDisplayName, getRoleNamesForLog } = require("../../discord/util");
 
+function buildWelcomeHeadline(title, beforeCount, afterCount) {
+  return `# **${title}**\n## **${beforeCount} → ${afterCount}**`;
+}
+
 function buildWelcomeEmbed({ memberLike }) {
   const displayName = getDisplayName(memberLike);
   const username = memberLike?.user?.username ?? "unknown";
@@ -17,18 +21,14 @@ function buildWelcomeEmbed({ memberLike }) {
       },
       {
         name: "현재 역할",
-        value: roleNames,
+        value: roleNames || "역할 없음",
         inline: false
       }
     )
     .setTimestamp();
 }
 
-function buildWelcomeHeadline(title, beforeCount, afterCount) {
-  return `# ${title} (${beforeCount} → ${afterCount})`;
-}
-
 module.exports = {
-  buildWelcomeEmbed,
-  buildWelcomeHeadline
+  buildWelcomeHeadline,
+  buildWelcomeEmbed
 };

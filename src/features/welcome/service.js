@@ -1,179 +1,100 @@
 const {
-  EmbedBuilder,
-  ActionRowBuilder,
-  ButtonBuilder,
-  ButtonStyle,
-  StringSelectMenuBuilder,
-  ModalBuilder,
-  TextInputBuilder,
-  TextInputStyle
-} = require("discord.js");
-const { buildMeta } = require("./meta");
+  ROLE_NEWBIE_ID,
+  ROLE_MEMBER_ID,
+  ROLE_ELITE_MEMBER_ID,
+  ROLE_SENIOR_MEMBER_ID,
+  OUT_ROLE_ID,
+  ALT_ROLE_ID
+} = require("../../config");
 
-const KIND_OPTIONS = [
-  { label: "게임", value: "게임", emoji: "🎮" },
-  { label: "노래", value: "노래", emoji: "🎵" },
-  { label: "영화", value: "영화", emoji: "🎬" },
-  { label: "수다", value: "수다", emoji: "💬" }
-];
+let currentWelcomeCount = 0;
 
-function partyBoardEmbed() {
-  return new EmbedBuilder()
-    .setColor(0x95a5a6)
-    .setTitle("📌 파티 현황판")
-    .setDescription([
-      "아래 버튼으로 파티를 생성합니다.",
-      "- 상시 운영",
-      "- 종료 버튼 누르면 삭제",
-      "- 상세 로그는 운영진 채널에만 기록"
-    ].join("\n"));
+function getWelcomeConfig() {
+  return {
+    ROLE_NEWBIE_ID,
+    ROLE_MEMBER_ID,
+    ROLE_ELITE_MEMBER_ID,
+    ROLE_SENIOR_MEMBER_ID,
+    OUT_ROLE_ID,
+    ALT_ROLE_ID
+  };
 }
 
-function partyBoardComponents() {
-  return [
-    new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId("party:create").setLabel("➕ 새 파티 만들기").setStyle(ButtonStyle.Success)
-    )
-  ];
+function hasAnyRole(member, roleIds = []) {
+  return roleIds.filter(Boolean).some((roleId) => member.roles?.cache?.has(roleId));
 }
 
-function kindSelectRow() {
-  return new ActionRowBuilder().addComponents(
-    new StringSelectMenuBuilder()
-      .setCustomId("party:draft:kind")
-      .setPlaceholder("카테고리 1 선택")
-      .addOptions(KIND_OPTIONS.map((o) => ({ label: o.label, value: o.value, emoji: o.emoji })))
-  );
+function isCountTarget(member, config = getWelcomeConfig()) {
+  if (!member || member.user?.bot) return false;
+
+  const includedRoleIds = [
+    config.ROLE_NEWBIE_ID,
+    config.ROLE_MEMBER_ID,
+    config.ROLE_ELITE_MEMBER_ID,
+    config.ROLE_SENIOR_MEMBER_ID
+  ].filter(Boolean);
+
+  if (!hasAnyRole(member, includedRoleIds)) return false;
+  if (config.OUT_ROLE_ID && member.roles?.cache?.has(config.OUT_ROLE_ID)) return false;
+  if (config.ALT_ROLE_ID && member.roles?.cache?.has(config.ALT_ROLE_ID)) return false;
+
+  return true;
 }
 
-function detailsModal() {
-  const modal = new ModalBuilder().setCustomId("party:draft:details").setTitle("파티 정보 입력");
+async function initWelcomeCount(guild, config = getWelcomeConfig()) {
+  await guild.members.fetch();
 
-  const title = new TextInputBuilder()
-    .setCustomId("title")
-    .setLabel("카테고리 2: 게임/종류")
-    .setStyle(TextInputStyle.Short)
-    .setRequired(true);
+  currentWelcomeCount = [...guild.members.cache.values()].filter((member) =>
+    isCountTarget(member, config)
+  ).length;
 
-  const note = new TextInputBuilder()
-    .setCustomId("note")
-    .setLabel("카테고리 3: 특이사항(선택)")
-    .setStyle(TextInputStyle.Paragraph)
-    .setRequired(false);
-
-  modal.addComponents(
-    new ActionRowBuilder().addComponents(title),
-    new ActionRowBuilder().addComponents(note)
-  );
-  return modal;
+  console.log("WELCOME_COUNT_INIT", currentWelcomeCount);
+  return currentWelcomeCount;
 }
 
-function timeModeRow() {
-  return new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId("party:draft:asap").setLabel("⚡ 모이면 바로 시작").setStyle(ButtonStyle.Primary),
-    new ButtonBuilder().setCustomId("party:draft:time").setLabel("🕒 시간 지정").setStyle(ButtonStyle.Secondary)
-  );
+function getWelcomeCount() {
+  return currentWelcomeCount;
 }
 
-function hourSelectRow(customId) {
-  const options = [];
-  for (let h = 0; h <= 23; h += 1) {
-    options.push({ label: `${String(h).padStart(2, "0")}시`, value: String(h) });
-  }
-
-  return new ActionRowBuilder().addComponents(
-    new StringSelectMenuBuilder()
-      .setCustomId(customId)
-      .setPlaceholder("시 선택")
-      .addOptions(options.slice(0, 25))
-  );
+function setWelcomeCount(nextCount) {
+  currentWelcomeCount = Math.max(0, nextCount);
+  return currentWelcomeCount;
 }
 
-function minuteSelectRow(customId) {
-  const options = [];
-  for (let m = 0; m < 60; m += 5) {
-    options.push({ label: `${String(m).padStart(2, "0")}분`, value: String(m) });
-  }
-
-  return new ActionRowBuilder().addComponents(
-    new StringSelectMenuBuilder()
-      .setCustomId(customId)
-      .setPlaceholder("분(5분 단위) 선택")
-      .addOptions(options)
-  );
+function countDelta(oldIncluded, newIncluded) {
+  if (oldIncluded && !newIncluded) return -1;
+  if (!oldIncluded && newIncluded) return 1;
+  return 0;
 }
 
-function partyActionRow() {
-  return new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId("party:join").setLabel("참가/비고").setStyle(ButtonStyle.Primary),
-    new ButtonBuilder().setCustomId("party:leave").setLabel("나가기").setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId("party:time").setLabel("시간변경").setStyle(ButtonStyle.Secondary),
-    new ButtonBuilder().setCustomId("party:start").setLabel("시작").setStyle(ButtonStyle.Success),
-    new ButtonBuilder().setCustomId("party:end").setLabel("종료").setStyle(ButtonStyle.Danger)
-  );
-}
+function detectWelcomeUpdateType(oldMember, newMember, config = getWelcomeConfig()) {
+  const hadOut = config.OUT_ROLE_ID ? oldMember.roles.cache.has(config.OUT_ROLE_ID) : false;
+  const hasOut = config.OUT_ROLE_ID ? newMember.roles.cache.has(config.OUT_ROLE_ID) : false;
 
-function joinNoteModal(msgId) {
-  const modal = new ModalBuilder().setCustomId(`party:joinnote:${msgId}`).setTitle("참가 비고(선택)");
-  const input = new TextInputBuilder()
-    .setCustomId("note")
-    .setLabel("비고(선택) 예: 늦참10 / 마이크X / 뉴비")
-    .setStyle(TextInputStyle.Paragraph)
-    .setRequired(false);
+  const hadAlt = config.ALT_ROLE_ID ? oldMember.roles.cache.has(config.ALT_ROLE_ID) : false;
+  const hasAlt = config.ALT_ROLE_ID ? newMember.roles.cache.has(config.ALT_ROLE_ID) : false;
 
-  modal.addComponents(new ActionRowBuilder().addComponents(input));
-  return modal;
-}
+  if (!hadOut && hasOut) return "✈ 외출";
+  if (hadOut && !hasOut) return "🏠 복귀";
+  if (!hadAlt && hasAlt) return "👥 부계정";
+  if (hadAlt && !hasAlt) return "👥 부계정 해제";
 
-function statusLabel(status) {
-  return status === "PLAYING" ? "🟢 게임중" : "🔴 모집중";
-}
+  const oldIncluded = isCountTarget(oldMember, config);
+  const newIncluded = isCountTarget(newMember, config);
 
-function buildPartyEmbed({ ownerId, ownerRoleLabel, kind, title, note, mode, startAtUnix, status, members }) {
-  const kindEmoji = KIND_OPTIONS.find((o) => o.value === kind)?.emoji ?? "📌";
-  const startLine = mode === "ASAP"
-    ? "⚡ 모이면 바로 시작"
-    : `🕒 <t:${startAtUnix}:F> ( <t:${startAtUnix}:R> )`;
+  if (!oldIncluded && newIncluded) return "➕ 입장 카운트 반영";
+  if (oldIncluded && !newIncluded) return "➖ 입장 카운트 제외";
 
-  const noteLine = note?.trim() ? note.trim() : "(없음)";
-  const memberLines = (members?.length ? members : [{ userId: ownerId, note: "" }])
-    .map((m) => `- <@${m.userId}>${m.note ? ` — ${m.note}` : ""}`)
-    .join("\n");
-
-  return new EmbedBuilder()
-    .setColor(status === "PLAYING" ? 0x2ecc71 : 0xe74c3c)
-    .setTitle(`${kindEmoji} ${kind}`)
-    .setDescription([
-      `🎯 **${title}**`,
-      ownerRoleLabel ? `👤 파티장: <@${ownerId}> (${ownerRoleLabel})` : `👤 파티장: <@${ownerId}>`
-    ].join("\n"))
-    .addFields(
-      { name: "상태", value: statusLabel(status), inline: true },
-      { name: "시작", value: startLine, inline: true },
-      { name: "특이사항", value: noteLine, inline: false },
-      { name: "참가자", value: memberLines, inline: false }
-    )
-    .setFooter({
-      text: buildMeta({
-        owner: ownerId,
-        ownerRole: ownerRoleLabel || "",
-        kind,
-        mode,
-        startAt: String(startAtUnix),
-        status
-      })
-    });
+  return null;
 }
 
 module.exports = {
-  partyBoardEmbed,
-  partyBoardComponents,
-  kindSelectRow,
-  detailsModal,
-  timeModeRow,
-  hourSelectRow,
-  minuteSelectRow,
-  partyActionRow,
-  joinNoteModal,
-  buildPartyEmbed
+  getWelcomeConfig,
+  hasAnyRole,
+  isCountTarget,
+  initWelcomeCount,
+  getWelcomeCount,
+  setWelcomeCount,
+  countDelta,
+  detectWelcomeUpdateType
 };
