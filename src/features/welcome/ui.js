@@ -1,11 +1,7 @@
 const { EmbedBuilder } = require("discord.js");
 const { getDisplayName, getRoleNamesForLog } = require("../../discord/util");
 
-function buildWelcomeHeadline(title, beforeCount, afterCount) {
-  return `# **${title}**\n## **${beforeCount} → ${afterCount}**`;
-}
-
-function buildWelcomeEmbed({ memberLike }) {
+function buildWelcomeEmbed({ title, beforeCount, afterCount, memberLike }) {
   const displayName = getDisplayName(memberLike);
   const username = memberLike?.user?.username ?? "unknown";
   const mention = memberLike?.id ? `<@${memberLike.id}>` : "(알 수 없음)";
@@ -13,15 +9,11 @@ function buildWelcomeEmbed({ memberLike }) {
 
   return new EmbedBuilder()
     .setColor(0x5865f2)
+    .setTitle(`${title} (${beforeCount} → ${afterCount})`)
     .addFields(
       {
-        name: "대상",
-        value: `**${displayName}** · ${username} · ${mention}`,
-        inline: false
-      },
-      {
-        name: "현재 역할",
-        value: roleNames || "역할 없음",
+        name: "\u200B",
+        value: `**${displayName}** · ${username} · ${mention}\n(${roleNames || "역할 없음"})`,
         inline: false
       }
     )
@@ -29,6 +21,5 @@ function buildWelcomeEmbed({ memberLike }) {
 }
 
 module.exports = {
-  buildWelcomeHeadline,
   buildWelcomeEmbed
 };

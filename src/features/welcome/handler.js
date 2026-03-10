@@ -3,7 +3,7 @@ const {
   ENABLE_WELCOME
 } = require("../../config");
 
-const { buildWelcomeEmbed, buildWelcomeHeadline } = require("./ui");
+const { buildWelcomeEmbed } = require("./ui");
 const {
   getWelcomeConfig,
   isCountTarget,
@@ -24,11 +24,14 @@ async function sendWelcomeCountLog(guild, title, beforeCount, afterCount, member
     return;
   }
 
-  const content = buildWelcomeHeadline(title, beforeCount, afterCount);
-  const embed = buildWelcomeEmbed({ memberLike });
+  const embed = buildWelcomeEmbed({
+    title,
+    beforeCount,
+    afterCount,
+    memberLike
+  });
 
   await channel.send({
-    content,
     embeds: [embed]
   }).catch((e) => {
     console.error("WELCOME_LOG_SEND_FAIL", e);

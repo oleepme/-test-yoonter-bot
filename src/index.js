@@ -35,30 +35,56 @@ function hasCustomId(message, customId) {
   );
 }
 
+function normalizeMessages(raw) {
+  if (!raw) return [];
+  if (Array.isArray(raw)) return raw;
+  if (typeof raw.values === "function") return [...raw.values()];
+  return [];
+}
+
 async function ensurePinnedMessage(channel, matcher, payloadBuilder) {
-  const pins = await channel.messages.fetchPins().catch((e) => {
+  // 1) pinned 메시지 먼저 검색
+  const pinsRaw = await channel.messages.fetchPins().catch((e) => {
     console.error("PIN_FETCH_FAIL", e);
     return null;
   });
 
-  const pinnedMatch = pins?.find((m) => matcher(m));
+  const pins = normalizeMessages(pinsRaw);
+  const pinnedMatch = pins.find((m) => matcher(m));
+
   if (pinnedMatch) {
-    console.log("PIN_REUSED", { channelId: channel.id, source: "pins", messageId: pinnedMatch.id });
+    console.log("PIN_REUSED", {
+      channelId: channel.id,
+      source: "pins",
+      messageId: pinnedMatch.id
+    });
     return pinnedMatch;
   }
 
-  const recentMessages = await channel.messages.fetch({ limit: 30 }).catch((e) => {
+  // 2) 최근 메시지 검색
+  const recentRaw = await channel.messages.fetch({ limit: 50 }).catch((e) => {
     console.error("RECENT_FETCH_FAIL", e);
     return null;
   });
 
-  const recentMatch = recentMessages?.find((m) => matcher(m));
+  const recentMessages = normalizeMessages(recentRaw);
+  const recentMatch = recentMessages.find((m) => matcher(m));
+
   if (recentMatch) {
-    console.log("PIN_REUSED", { channelId: channel.id, source: "recent", messageId: recentMatch.id });
-    await recentMatch.pin().catch((e) => console.error("PIN_REAPPLY_FAIL", e));
+    console.log("PIN_REUSED", {
+      channelId: channel.id,
+      source: "recent",
+      messageId: recentMatch.id
+    });
+
+    await recentMatch.pin().catch((e) => {
+      console.error("PIN_REAPPLY_FAIL", e);
+    });
+
     return recentMatch;
   }
 
+  // 3) 진짜 없을 때만 새 생성
   const payload = payloadBuilder();
   const msg = await channel.send(payload).catch((e) => {
     console.error("PIN_MESSAGE_SEND_FAIL", e);
@@ -67,8 +93,15 @@ async function ensurePinnedMessage(channel, matcher, payloadBuilder) {
 
   if (!msg) return null;
 
-  await msg.pin().catch((e) => console.error("PIN_CREATE_FAIL", e));
-  console.log("PIN_CREATED", { channelId: channel.id, messageId: msg.id });
+  await msg.pin().catch((e) => {
+    console.error("PIN_CREATE_FAIL", e);
+  });
+
+  console.log("PIN_CREATED", {
+    channelId: channel.id,
+    messageId: msg.id
+  });
+
   return msg;
 }
 
@@ -81,6 +114,7 @@ async function onReady() {
 
   await initWelcomeFeature(guild);
 
+  // 게임별 파티 게시판 고정 메시지 보장
   for (const config of getAllBoardConfigs()) {
     const board = await guild.channels.fetch(config.channelId).catch((e) => {
       console.error("PARTY_BOARD_FETCH_FAIL", config.channelId, e);
@@ -108,6 +142,7 @@ async function onReady() {
     );
   }
 
+  // 닉네임 안내 고정 메시지 보장
   if (ENABLE_NICK && NICK_HELP_CHANNEL_ID) {
     const nickCh = await guild.channels.fetch(NICK_HELP_CHANNEL_ID).catch((e) => {
       console.error("NICK_HELP_CHANNEL_FETCH_FAIL", e);
