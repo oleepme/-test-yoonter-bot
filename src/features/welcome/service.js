@@ -72,24 +72,23 @@ function countDelta(oldIncluded, newIncluded) {
 }
 
 function detectWelcomeUpdateType(oldMember, newMember, config = getWelcomeConfig()) {
-  const hadOut = config.OUT_ROLE_ID
-    ? oldMember.roles?.cache?.has(config.OUT_ROLE_ID)
-    : false;
-  const hasOut = config.OUT_ROLE_ID
-    ? newMember.roles?.cache?.has(config.OUT_ROLE_ID)
-    : false;
+  const hadOut = config.OUT_ROLE_ID ? oldMember.roles.cache.has(config.OUT_ROLE_ID) : false;
+  const hasOut = config.OUT_ROLE_ID ? newMember.roles.cache.has(config.OUT_ROLE_ID) : false;
 
-  const hadAlt = config.ALT_ROLE_ID
-    ? oldMember.roles?.cache?.has(config.ALT_ROLE_ID)
-    : false;
-  const hasAlt = config.ALT_ROLE_ID
-    ? newMember.roles?.cache?.has(config.ALT_ROLE_ID)
-    : false;
+  const hadAlt = config.ALT_ROLE_ID ? oldMember.roles.cache.has(config.ALT_ROLE_ID) : false;
+  const hasAlt = config.ALT_ROLE_ID ? newMember.roles.cache.has(config.ALT_ROLE_ID) : false;
 
   if (!hadOut && hasOut) return "✈ 외출";
   if (hadOut && !hasOut) return "🏠 복귀";
   if (!hadAlt && hasAlt) return "👥 부계정";
   if (hadAlt && !hasAlt) return "👥 부계정 해제";
+
+  const oldIncluded = isCountTarget(oldMember, config);
+  const newIncluded = isCountTarget(newMember, config);
+
+  if (!oldIncluded && newIncluded) return "➕ 입장 카운트 반영";
+  if (oldIncluded && !newIncluded) return "➖ 입장 카운트 제외";
+
   return null;
 }
 
