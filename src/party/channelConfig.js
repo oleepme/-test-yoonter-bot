@@ -63,12 +63,11 @@ const BOARD_CONFIGS = [
     allowedKinds: ["GAME"],
     createButtonLabel: "게임파티 만들기",
     partyPrefix: "스팀",
-    mentionRoleByTitle: [
-      { includes: "공포", roleId: ROLE_STEAM_HORROR_ID },
-      { includes: "협동", roleId: ROLE_STEAM_COOP_ID },
-      { includes: "오픈월드", roleId: ROLE_STEAM_OPENWORLD_ID },
-    ],
-    // 스팀은 세부 카테고리를 제목 앞에 붙여 입력하는 방식 유지
+    mentionRoleBySubKind: {
+      공포: ROLE_STEAM_HORROR_ID,
+      협동: ROLE_STEAM_COOP_ID,
+      오픈월드: ROLE_STEAM_OPENWORLD_ID,
+    },
     gameSubKinds: ["공포", "협동", "오픈월드"],
   },
   {
@@ -79,7 +78,7 @@ const BOARD_CONFIGS = [
     createButtonLabel: null,
     partyPrefix: "기타",
     mentionRoleId: "",
-    gameSubKinds: [], // 기타-게임 세부 카테고리 삭제
+    gameSubKinds: [], // 기타-게임은 세부 카테고리 삭제
   },
 ].filter((x) => x.channelId);
 
@@ -91,20 +90,18 @@ function getAllBoardConfigs() {
   return BOARD_CONFIGS;
 }
 
-function getMentionRoleId(config, title = "") {
+function getMentionRoleId(config, subKind = "", _title = "") {
   if (!config) return "";
   if (config.mentionRoleId) return config.mentionRoleId;
 
-  const text = String(title || "");
-  if (Array.isArray(config.mentionRoleByTitle)) {
-    const found = config.mentionRoleByTitle.find((x) => text.includes(x.includes) && x.roleId);
-    return found?.roleId || "";
+  if (config.mentionRoleBySubKind && subKind) {
+    return config.mentionRoleBySubKind[subKind] || "";
   }
 
   return "";
 }
 
-function buildDisplayTitle(config, title, kind) {
+function buildDisplayTitle(config, title, kind, subKind = "") {
   const clean = String(title || "").trim() || "(제목없음)";
 
   if (!config) return clean;
@@ -116,7 +113,11 @@ function buildDisplayTitle(config, title, kind) {
     return `[기타-게임] ${clean}`;
   }
 
-  return `[${config.partyPrefix}] ${clean}`;
+  if (config.key === "STEAM") {
+    return `[스팀] ${subKind || clean}${subKind && clean ? ` · ${clean}` : ""}`;
+  }
+
+  return `[${config.partyPrefix}] ${subKind || clean}`;
 }
 
 module.exports = {
