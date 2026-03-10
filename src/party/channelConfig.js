@@ -69,6 +69,7 @@ const BOARD_CONFIGS = [
       오픈월드: ROLE_STEAM_OPENWORLD_ID,
     },
     gameSubKinds: ["공포", "협동", "오픈월드"],
+    usesCustomGameTitle: true, // 스팀은 실제 게임명 입력
   },
   {
     key: "ETC",
@@ -78,7 +79,8 @@ const BOARD_CONFIGS = [
     createButtonLabel: null,
     partyPrefix: "기타",
     mentionRoleId: "",
-    gameSubKinds: [], // 기타-게임은 세부 카테고리 삭제
+    gameSubKinds: [],
+    usesCustomGameTitle: true,
   },
 ].filter((x) => x.channelId);
 
@@ -90,7 +92,7 @@ function getAllBoardConfigs() {
   return BOARD_CONFIGS;
 }
 
-function getMentionRoleId(config, subKind = "", _title = "") {
+function getMentionRoleId(config, subKind = "") {
   if (!config) return "";
   if (config.mentionRoleId) return config.mentionRoleId;
 
@@ -107,17 +109,23 @@ function buildDisplayTitle(config, title, kind, subKind = "") {
   if (!config) return clean;
 
   if (config.key === "ETC") {
-    if (kind === "MUSIC") return `[기타-노래] ${clean}`;
-    if (kind === "CHAT") return `[기타-수다] ${clean}`;
-    if (kind === "MOVIE") return `[기타-영화] ${clean}`;
-    return `[기타-게임] ${clean}`;
+    if (kind === "MUSIC") return `[기타] ${clean}`;
+    if (kind === "CHAT") return `[기타] ${clean}`;
+    if (kind === "MOVIE") return `[기타] ${clean}`;
+    return `[기타] ${clean}`;
   }
 
+  // 일반 게임 게시판: [대분류] 소분류
+  if (config.key === "LOL" || config.key === "PUBG" || config.key === "VALO" || config.key === "OW") {
+    return `[${config.partyPrefix}] ${subKind || clean}`;
+  }
+
+  // 스팀: [스팀] 게임명
   if (config.key === "STEAM") {
-    return `[스팀] ${subKind || clean}${subKind && clean ? ` · ${clean}` : ""}`;
+    return `[스팀] ${clean}`;
   }
 
-  return `[${config.partyPrefix}] ${subKind || clean}`;
+  return `[${config.partyPrefix}] ${clean}`;
 }
 
 module.exports = {
