@@ -192,6 +192,14 @@ function getOptionalTextInputValue(interaction, customId) {
 function normalizeText(v) {
   return (v ?? "").toString().trim().toLowerCase();
 }
+function compactNicknameText(v) {
+  return (v ?? "")
+    .toString()
+    .toLowerCase()
+    .replace(/\s+/g, "")
+    .replace(/[\[\](){}<>《》【】「」『』ㆍ·•_\-~!@#$%^&*+=|\\/:;'",.?`♡♥❤💗💖💘💝💞💓💟]/g, "");
+}
+
 
 async function getDisplayNameByUserId(guild, userId) {
   const cached = guild.members.cache.get(userId);
@@ -411,6 +419,7 @@ async function resolveGuildMemberByLooseName(guild, raw) {
   const input = (raw ?? "").toString().trim();
   if (!input) return { member: null, reason: "empty" };
 
+  // 멘션은 그대로 허용
   const mention = input.match(/^<@!?(\d+)>$/);
   if (mention) {
     const member = await guild.members.fetch(mention[1]).catch(() => null);
@@ -421,27 +430,57 @@ async function resolveGuildMemberByLooseName(guild, raw) {
   if (!members) return { member: null, reason: "not_found" };
 
   const q = normalizeText(input);
+  const qc = compactNicknameText(input);
   const all = [...members.values()];
 
+  // 1) 서버 내 별명 정확일치 우선
   const exact = all.filter((m) => {
     const display = normalizeText(m.displayName);
-    const username = normalizeText(m.user?.username);
-    const globalName = normalizeText(m.user?.globalName);
-    return display === q || username === q || globalName === q;
+    const displayCompact = compactNicknameText(m.displayName);
+
+    const nickname = normalizeText(m.nickname);
+    const nicknameCompact = compactNicknameText(m.nickname);
+
+    return (
+      display === q ||
+      displayCompact === qc ||
+      nickname === q ||
+      nicknameCompact === qc
+    );
   });
 
-  if (exact.length === 1) return { member: exact[0], reason: "exact" };
-  if (exact.length > 1) return { member: null, reason: "ambiguous", candidates: exact };
+  if (exact.length === 1) {
+    return { member: exact[0], reason: "exact" };
+  }
 
+  if (exact.length > 1) {
+    return { member: null, reason: "ambiguous", candidates: exact };
+  }
+
+  // 2) 서버 내 별명 부분일치
   const partial = all.filter((m) => {
     const display = normalizeText(m.displayName);
-    const username = normalizeText(m.user?.username);
-    const globalName = normalizeText(m.user?.globalName);
-    return display.includes(q) || username.includes(q) || globalName.includes(q);
+    const displayCompact = compactNicknameText(m.displayName);
+
+    const nickname = normalizeText(m.nickname);
+    const nicknameCompact = compactNicknameText(m.nickname);
+
+    return (
+      display.includes(q) ||
+      displayCompact.includes(qc) ||
+      nickname.includes(q) ||
+      nicknameCompact.includes(qc)
+    );
   });
 
-  if (partial.length === 1) return { member: partial[0], reason: "partial" };
-  if (partial.length > 1) return { member: null, reason: "ambiguous", candidates: partial };
+  if (partial.length === 1) {
+    return { member: partial[0], reason: "partial" };
+  }
+
+  if (partial.length > 1) {
+    return { member: null, reason: "ambiguous", candidates: partial };
+  }
+
   return { member: null, reason: "not_found" };
 }
 
