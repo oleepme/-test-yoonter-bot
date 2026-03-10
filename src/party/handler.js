@@ -66,6 +66,18 @@ async function doneModal(interaction) {
   } catch {}
 }
 
+async function deleteCreatePrompt(client, draft) {
+  try {
+    if (!draft?.originApplicationId || !draft?.originToken) return;
+
+    const route = draft.originMessageId
+      ? `/webhooks/${draft.originApplicationId}/${draft.originToken}/messages/${draft.originMessageId}`
+      : `/webhooks/${draft.originApplicationId}/${draft.originToken}/messages/@original`;
+
+    await client.rest.delete(route).catch(() => {});
+  } catch {}
+}
+
 async function ephemeralError(interaction, content) {
   try {
     if (interaction.type === InteractionType.ModalSubmit) {
@@ -347,6 +359,9 @@ async function handleParty(interaction) {
       createDraft.set(interaction.user.id, {
         boardChannelId: interaction.channelId,
         kind,
+        originApplicationId: interaction.applicationId,
+        originToken: interaction.token,
+        originMessageId: null,
       });
 
       await interaction.reply({
@@ -354,6 +369,15 @@ async function handleParty(interaction) {
         components: [createGameSubKindRow(boardConfig)],
         ephemeral: true,
       }).catch(() => {});
+
+      const replyMsg = await interaction.fetchReply().catch(() => null);
+      if (replyMsg?.id) {
+        const current = createDraft.get(interaction.user.id);
+        if (current) {
+          current.originMessageId = replyMsg.id;
+          createDraft.set(interaction.user.id, current);
+        }
+      }
       return true;
     }
 
@@ -475,6 +499,7 @@ async function handleParty(interaction) {
       const party = await getParty(msg.id);
       if (party) await refreshPartyMessage(guild, party);
 
+      await deleteCreatePrompt(interaction.client, draft);
       createDraft.delete(interaction.user.id);
       await doneModal(interaction);
       return true;
