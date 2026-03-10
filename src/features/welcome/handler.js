@@ -1,7 +1,8 @@
 const {
-  ENABLE_WELCOME,
-  WELCOME_BOARD_CHANNEL_ID
+  WELCOME_BOARD_CHANNEL_ID,
+  ENABLE_WELCOME
 } = require("../../config");
+
 const { buildWelcomeEmbed } = require("./ui");
 const {
   getWelcomeConfig,
@@ -36,10 +37,7 @@ async function sendWelcomeCountLog(guild, title, beforeCount, afterCount, member
 }
 
 async function initWelcomeFeature(guild) {
-  if (!ENABLE_WELCOME) {
-    console.log("WELCOME_DISABLED");
-    return;
-  }
+  if (!ENABLE_WELCOME) return;
 
   const config = getWelcomeConfig();
   await initWelcomeCount(guild, config);
@@ -47,9 +45,9 @@ async function initWelcomeFeature(guild) {
 
 function bindWelcomeEvents(client) {
   client.on("guildMemberAdd", async (member) => {
-    try {
-      if (!ENABLE_WELCOME) return;
+    if (!ENABLE_WELCOME) return;
 
+    try {
       const config = getWelcomeConfig();
       const included = isCountTarget(member, config);
 
@@ -64,9 +62,9 @@ function bindWelcomeEvents(client) {
   });
 
   client.on("guildMemberRemove", async (member) => {
-    try {
-      if (!ENABLE_WELCOME) return;
+    if (!ENABLE_WELCOME) return;
 
+    try {
       const config = getWelcomeConfig();
       const included = isCountTarget(member, config);
 
@@ -81,9 +79,9 @@ function bindWelcomeEvents(client) {
   });
 
   client.on("guildMemberUpdate", async (oldMember, newMember) => {
-    try {
-      if (!ENABLE_WELCOME) return;
+    if (!ENABLE_WELCOME) return;
 
+    try {
       const config = getWelcomeConfig();
       const title = detectWelcomeUpdateType(oldMember, newMember, config);
       if (!title) return;

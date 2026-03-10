@@ -10,8 +10,17 @@ function buildWelcomeEmbed({ title, beforeCount, afterCount, memberLike }) {
   return new EmbedBuilder()
     .setColor(0x5865f2)
     .setTitle(`${title} (${beforeCount} → ${afterCount})`)
-    .setDescription(
-      `**${displayName}** · ${username} · ${mention}\n(${roleNames})`
+    .addFields(
+      {
+        name: "대상",
+        value: `**${displayName}** · ${username} · ${mention}`,
+        inline: false
+      },
+      {
+        name: "현재 역할",
+        value: roleNames,
+        inline: false
+      }
     )
     .setTimestamp();
 }

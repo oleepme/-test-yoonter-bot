@@ -21,9 +21,7 @@ function getWelcomeConfig() {
 }
 
 function hasAnyRole(member, roleIds = []) {
-  return roleIds
-    .filter(Boolean)
-    .some((roleId) => member.roles?.cache?.has(roleId));
+  return roleIds.filter(Boolean).some((roleId) => member.roles?.cache?.has(roleId));
 }
 
 function isCountTarget(member, config = getWelcomeConfig()) {
@@ -44,8 +42,6 @@ function isCountTarget(member, config = getWelcomeConfig()) {
 }
 
 async function initWelcomeCount(guild, config = getWelcomeConfig()) {
-  // 시작 시 1회만 fetch해서 초기 카운트를 만든다.
-  // 이벤트마다 fetch하면 Gateway rate limit에 걸릴 수 있다.
   await guild.members.fetch();
 
   currentWelcomeCount = [...guild.members.cache.values()].filter((member) =>
