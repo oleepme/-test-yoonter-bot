@@ -46,7 +46,8 @@ async function sendWelcomeCountLog(guild, title, beforeCount, afterCount, member
   });
 
   await channel.send({
-    embeds: [embed]
+    embeds: [embed],
+    allowedMentions: { parse: [] },
   }).catch((e) => {
     console.error("WELCOME_LOG_SEND_FAIL", e);
   });
@@ -66,7 +67,7 @@ function parseEmbedHeader(description = "") {
 
 function embedContainsUserId(embed, userId) {
   const desc = embed?.description || "";
-  return desc.includes(String(userId));
+  return desc.includes(`<@${userId}>`) || desc.includes(`<@!${userId}>`);
 }
 
 async function refreshTrackedWelcomeEmbeds(guild, memberLike) {
@@ -99,7 +100,10 @@ async function refreshTrackedWelcomeEmbeds(guild, memberLike) {
       memberLike,
     });
 
-    await msg.edit({ embeds: [nextEmbed] }).catch((e) => {
+    await msg.edit({
+      embeds: [nextEmbed],
+      allowedMentions: { parse: [] },
+    }).catch((e) => {
       console.error("WELCOME_EDIT_FAIL", e);
     });
   }
@@ -153,7 +157,6 @@ function bindWelcomeEvents(client) {
     try {
       const config = getWelcomeConfig();
 
-      // 닉네임 / 아이디 / 역할 실시간 반영
       const displayNameChanged = oldMember.displayName !== newMember.displayName;
       const usernameChanged = oldMember.user?.username !== newMember.user?.username;
       const rolesChanged =

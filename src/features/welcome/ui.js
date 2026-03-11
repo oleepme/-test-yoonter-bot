@@ -14,8 +14,8 @@ function getLiveUsername(memberLike) {
   return memberLike?.user?.username || "unknown";
 }
 
-function getUserIdText(memberLike) {
-  return memberLike?.id || "unknown";
+function getUserMention(memberLike) {
+  return memberLike?.id ? `<@${memberLike.id}>` : "(알 수 없음)";
 }
 
 function getLiveRoleNames(memberLike) {
@@ -31,7 +31,7 @@ function getLiveRoleNames(memberLike) {
 function buildWelcomeEmbed({ title, beforeCount, afterCount, memberLike }) {
   const nickname = getLiveNickname(memberLike);
   const username = getLiveUsername(memberLike);
-  const userId = getUserIdText(memberLike);
+  const mention = getUserMention(memberLike);
   const roleNames = getLiveRoleNames(memberLike);
 
   return new EmbedBuilder()
@@ -39,7 +39,7 @@ function buildWelcomeEmbed({ title, beforeCount, afterCount, memberLike }) {
     .setDescription(
       [
         `## **${title}** (${beforeCount} → ${afterCount})`,
-        `**${nickname} · ${username} · ${userId}**`,
+        `**${nickname} · ${username} · ${mention}**`,
         `\`${roleNames}\``,
       ].join("\n")
     )
