@@ -79,10 +79,15 @@ function detectWelcomeUpdateType(oldMember, newMember, config = getWelcomeConfig
   if (!hadAlt && hasAlt) return "👥 부계정";
   if (hadAlt && !hasAlt) return "👥 부계정 해제";
 
-  const oldIncluded = isCountTarget(oldMember, config);
-  const newIncluded = isCountTarget(newMember, config);
+  const hadNewbie = config.ROLE_NEWBIE_ID
+    ? oldMember.roles.cache.has(config.ROLE_NEWBIE_ID)
+    : false;
 
-  if (!oldIncluded && newIncluded) return "🏷 역할부여";
+  const hasNewbie = config.ROLE_NEWBIE_ID
+    ? newMember.roles.cache.has(config.ROLE_NEWBIE_ID)
+    : false;
+
+  if (!hadNewbie && hasNewbie) return "🏷 역할부여";
 
   return null;
 }

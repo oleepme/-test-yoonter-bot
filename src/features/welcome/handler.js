@@ -159,12 +159,20 @@ function bindWelcomeEvents(client) {
 
       const displayNameChanged = oldMember.displayName !== newMember.displayName;
       const usernameChanged = oldMember.user?.username !== newMember.user?.username;
-      const rolesChanged =
-        oldMember.roles.cache.size !== newMember.roles.cache.size ||
-        [...oldMember.roles.cache.keys()].some((id) => !newMember.roles.cache.has(id)) ||
-        [...newMember.roles.cache.keys()].some((id) => !oldMember.roles.cache.has(id));
 
-      if (displayNameChanged || usernameChanged || rolesChanged) {
+      const hadNewbie = config.ROLE_NEWBIE_ID
+        ? oldMember.roles.cache.has(config.ROLE_NEWBIE_ID)
+        : false;
+
+      const hasNewbie = config.ROLE_NEWBIE_ID
+        ? newMember.roles.cache.has(config.ROLE_NEWBIE_ID)
+        : false;
+
+      const newbieRoleChanged = hadNewbie !== hasNewbie;
+
+      // 기존 welcome 임베드 실시간 갱신:
+      // 닉네임 변경 / 아이디 변경 / 뉴비 역할 변화 때만 수행
+      if (displayNameChanged || usernameChanged || newbieRoleChanged) {
         await refreshTrackedWelcomeEmbeds(newMember.guild, newMember);
       }
 
