@@ -13,6 +13,9 @@ const {
   ROLE_STEAM_HORROR_ID,
   ROLE_STEAM_COOP_ID,
   ROLE_STEAM_OPENWORLD_ID,
+  ROLE_ETC_APEX_ID,
+  ROLE_ETC_SUDDEN_ID,
+  ROLE_ETC_MINECRAFT_ID,
 } = require("../config");
 
 const BOARD_CONFIGS = [
@@ -79,7 +82,12 @@ const BOARD_CONFIGS = [
     createButtonLabel: null,
     partyPrefix: "기타",
     mentionRoleId: "",
-    gameSubKinds: [],
+    mentionRoleBySubKind: {
+      에이팩스: ROLE_ETC_APEX_ID,
+      서든어택: ROLE_ETC_SUDDEN_ID,
+      마인크래프트: ROLE_ETC_MINECRAFT_ID,
+    },
+    gameSubKinds: ["에이팩스", "서든어택", "마인크래프트", "직접작성"],
     usesCustomGameTitle: true,
   },
 ].filter((x) => x.channelId);
@@ -105,10 +113,21 @@ function getMentionRoleId(config, subKind = "") {
 
 function buildDisplayTitle(config, title, kind, subKind = "") {
   const clean = String(title || "").trim() || "(제목없음)";
+  const cleanSubKind = String(subKind || "").trim();
 
   if (!config) return clean;
 
   if (config.key === "ETC") {
+    if (kind === "GAME") {
+      if (cleanSubKind && cleanSubKind !== "직접작성") {
+        if (clean && clean !== cleanSubKind) {
+          return `[기타] ${cleanSubKind} - ${clean}`;
+        }
+        return `[기타] ${cleanSubKind}`;
+      }
+      return `[기타] ${clean}`;
+    }
+
     if (kind === "MUSIC") return `[기타] ${clean}`;
     if (kind === "CHAT") return `[기타] ${clean}`;
     if (kind === "MOVIE") return `[기타] ${clean}`;
@@ -116,8 +135,13 @@ function buildDisplayTitle(config, title, kind, subKind = "") {
   }
 
   // 일반 게임 게시판: [대분류] 소분류
-  if (config.key === "LOL" || config.key === "PUBG" || config.key === "VALO" || config.key === "OW") {
-    return `[${config.partyPrefix}] ${subKind || clean}`;
+  if (
+    config.key === "LOL" ||
+    config.key === "PUBG" ||
+    config.key === "VALO" ||
+    config.key === "OW"
+  ) {
+    return `[${config.partyPrefix}] ${cleanSubKind || clean}`;
   }
 
   // 스팀: [스팀] 게임명
