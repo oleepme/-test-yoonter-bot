@@ -857,7 +857,11 @@ async function handleParty(interaction) {
         return true;
       }
 
-      if (!isUnlimitedKind(kind) && !title) {
+      const shouldRequireManualTitle =
+        boardConfig.key === "ETC" ||
+        (kind !== "GAME" && !isUnlimitedKind(kind));
+
+      if (shouldRequireManualTitle && !title) {
         await ephemeralError(interaction, "제목은 필수입니다.");
         return true;
       }
@@ -942,8 +946,12 @@ async function handleParty(interaction) {
     if (!editParty) return ephemeralError(interaction, "파티를 찾지 못했습니다.");
 
     const admin = isAdmin(interaction);
-    const ok = admin || interaction.user.id === editParty.owner_id;
-    if (!ok) return ephemeralError(interaction, "파티장 또는 운영진만 수정할 수 있습니다.");
+    const isMember = playingMembers(editParty).some((m) => m.user_id ===     interaction.user.id);
+    const ok = admin || interaction.user.id === editParty.owner_id || isMember;
+
+    if (!ok) {
+      return ephemeralError(interaction, "현재 참가중인 파티원/파티장/운영진만 수정할 수 있습니다.");
+    }
 
     await ackModal(interaction);
 
@@ -959,16 +967,24 @@ async function handleParty(interaction) {
         boardConfig?.key !== "STEAM" &&
         editParty.sub_kind
       ) {
+        // 롤 / 배그 / 발로 / 옵치
+        // 제목칸은 없고 세부 카테고리가 제목 역할을 함
         title = editParty.sub_kind;
       }
 
-      if (editParty.kind === "GAME" && boardConfig?.key === "STEAM" && !title) {
+      // 스팀게임은 제목(게임명)을 직접 입력해야 함
+            if (editParty.kind === "GAME" && boardConfig?.key === "STEAM" && !title) {
         return ephemeralError(interaction, "게임명을 입력해주세요.");
       }
 
-      if (!isUnlimitedKind(editParty.kind) && !title) {
-        return ephemeralError(interaction, "제목은 필수입니다.");
-      }
+// 제목을 직접 입력해야 하는 경우에만 제목 필수 검사
+const shouldRequireManualTitle =
+  boardConfig?.key === "ETC" ||
+  (editParty.kind !== "GAME" && !isUnlimitedKind(editParty.kind));
+
+if (shouldRequireManualTitle && !title) {
+  return ephemeralError(interaction, "제목은 필수입니다.");
+}
 
       let maxPlayers = Number(editParty.max_players) || 4;
       if (!isUnlimitedKind(editParty.kind)) {
@@ -979,7 +995,7 @@ async function handleParty(interaction) {
 
       await upsertParty({
         ...editParty,
-        title: title || "(제목 없음)",
+        title: title || editParty.sub_kind || editParty.title || "(제목 없음)",
         party_note: note,
         time_text: time || "",
         max_players: maxPlayers,
@@ -1228,9 +1244,11 @@ async function handleParty(interaction) {
 
   if (interaction.isButton() && interaction.customId === "party:edit") {
     const admin = isAdmin(interaction);
-    const ok = admin || interaction.user.id === party.owner_id;
+    const isMember = playingMembers(party).some((m) => m.user_id ===     interaction.user.id);
+    const ok = admin || interaction.user.id === party.owner_id || isMember;
+
     if (!ok) {
-      await ephemeralError(interaction, "파티장 또는 운영진만 수정할 수 있습니다.");
+      await ephemeralError(interaction, "현재 참가중인 파티원/파티장/운영진만 수정할 수 있습니다.");
       return true;
     }
 
