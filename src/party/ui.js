@@ -30,7 +30,12 @@ function kindIcon(kind) {
 function isFixedTitleGameBoard(boardConfig, kind) {
   if (kind !== "GAME") return false;
   const key = (boardConfig?.key || "").toUpperCase();
-  return key === "LOL" || key === "PUBG" || key === "VALORANT" || key === "OVERWATCH";
+  return (
+    key === "LOL" ||
+    key === "PUBG" ||
+    key === "VALO" ||
+    key === "OW"
+  );
 }
 
 function partyBoardEmbed(boardConfig) {
@@ -46,10 +51,22 @@ function partyBoardComponents(boardConfig) {
   if (cfg.allowedKinds?.length > 1) {
     return [
       new ActionRowBuilder().addComponents(
-        new ButtonBuilder().setCustomId("party:create:GAME").setLabel("🎮 게임").setStyle(ButtonStyle.Primary),
-        new ButtonBuilder().setCustomId("party:create:MOVIE").setLabel("🎬 영화").setStyle(ButtonStyle.Secondary),
-        new ButtonBuilder().setCustomId("party:create:CHAT").setLabel("💬 수다").setStyle(ButtonStyle.Secondary),
-        new ButtonBuilder().setCustomId("party:create:MUSIC").setLabel("🎤 노래").setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder()
+          .setCustomId("party:create:GAME")
+          .setLabel("🎮 게임")
+          .setStyle(ButtonStyle.Primary),
+        new ButtonBuilder()
+          .setCustomId("party:create:MOVIE")
+          .setLabel("🎬 영화")
+          .setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder()
+          .setCustomId("party:create:CHAT")
+          .setLabel("💬 수다")
+          .setStyle(ButtonStyle.Secondary),
+        new ButtonBuilder()
+          .setCustomId("party:create:MUSIC")
+          .setLabel("🎤 노래")
+          .setStyle(ButtonStyle.Secondary)
       ),
     ];
   }
@@ -59,15 +76,19 @@ function partyBoardComponents(boardConfig) {
       new ButtonBuilder()
         .setCustomId("party:create:GAME")
         .setLabel("🎮 게임파티 만들기")
-        .setStyle(ButtonStyle.Primary),
+        .setStyle(ButtonStyle.Primary)
     ),
   ];
 }
 
 function createPartyModal(kind, boardConfig) {
-  const modal = new ModalBuilder().setCustomId(`party:create:submit:${kind}`).setTitle(`새 ${kindLabel(kind)} 파티`);
+  const modal = new ModalBuilder()
+    .setCustomId(`party:create:submit:${kind}`)
+    .setTitle(`새 ${kindLabel(kind)} 파티`);
+
   const rows = [];
 
+  // 롤 / 배그 / 발로 / 옵치 : 제목칸 없음
   if (!isFixedTitleGameBoard(boardConfig, kind)) {
     const title = new TextInputBuilder()
       .setCustomId("title")
@@ -92,7 +113,7 @@ function createPartyModal(kind, boardConfig) {
 
   rows.push(
     new ActionRowBuilder().addComponents(note),
-    new ActionRowBuilder().addComponents(time),
+    new ActionRowBuilder().addComponents(time)
   );
 
   if (!isUnlimitedKind(kind)) {
@@ -111,9 +132,13 @@ function createPartyModal(kind, boardConfig) {
 
 function editPartyModal(msgId, party, boardConfig, _isAdminEdit) {
   const kind = party?.kind || "GAME";
-  const modal = new ModalBuilder().setCustomId(`party:edit:submit:${msgId}`).setTitle("파티 수정");
+  const modal = new ModalBuilder()
+    .setCustomId(`party:edit:submit:${msgId}`)
+    .setTitle("파티 수정");
+
   const rows = [];
 
+  // 롤 / 배그 / 발로 / 옵치 : 수정에서도 제목칸 없음
   if (!isFixedTitleGameBoard(boardConfig, kind)) {
     const title = new TextInputBuilder()
       .setCustomId("title")
@@ -141,7 +166,7 @@ function editPartyModal(msgId, party, boardConfig, _isAdminEdit) {
 
   rows.push(
     new ActionRowBuilder().addComponents(note),
-    new ActionRowBuilder().addComponents(time),
+    new ActionRowBuilder().addComponents(time)
   );
 
   if (!isUnlimitedKind(kind)) {
@@ -160,7 +185,9 @@ function editPartyModal(msgId, party, boardConfig, _isAdminEdit) {
 }
 
 function manageMembersModal(msgId, slotsText) {
-  const modal = new ModalBuilder().setCustomId(`party:manage:submit:${msgId}`).setTitle("인원 관리(운영진)");
+  const modal = new ModalBuilder()
+    .setCustomId(`party:manage:submit:${msgId}`)
+    .setTitle("인원 관리(운영진)");
 
   const input = new TextInputBuilder()
     .setCustomId("slots_text")
@@ -174,23 +201,31 @@ function manageMembersModal(msgId, slotsText) {
 }
 
 function joinNoteModal(msgId) {
-  const modal = new ModalBuilder().setCustomId(`party:joinnote:${msgId}`).setTitle("참가/비고");
+  const modal = new ModalBuilder()
+    .setCustomId(`party:joinnote:${msgId}`)
+    .setTitle("참가/비고");
+
   const input = new TextInputBuilder()
     .setCustomId("note")
     .setLabel("비고(선택) 예: 늦참10 / 마이크X")
     .setStyle(TextInputStyle.Paragraph)
     .setRequired(false);
+
   modal.addComponents(new ActionRowBuilder().addComponents(input));
   return modal;
 }
 
 function waitModal(msgId) {
-  const modal = new ModalBuilder().setCustomId(`party:wait:submit:${msgId}`).setTitle("대기 등록");
+  const modal = new ModalBuilder()
+    .setCustomId(`party:wait:submit:${msgId}`)
+    .setTitle("대기 등록");
+
   const input = new TextInputBuilder()
     .setCustomId("note")
     .setLabel("대기 코멘트(선택)")
     .setStyle(TextInputStyle.Paragraph)
     .setRequired(false);
+
   modal.addComponents(new ActionRowBuilder().addComponents(input));
   return modal;
 }
@@ -198,23 +233,50 @@ function waitModal(msgId) {
 function partyActionRows() {
   return [
     new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId("party:join").setLabel("참가/비고").setStyle(ButtonStyle.Primary),
-      new ButtonBuilder().setCustomId("party:leave").setLabel("나가기").setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder().setCustomId("party:wait").setLabel("대기").setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder().setCustomId("party:waitoff").setLabel("대기 해지").setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder()
+        .setCustomId("party:join")
+        .setLabel("참가/비고")
+        .setStyle(ButtonStyle.Primary),
+      new ButtonBuilder()
+        .setCustomId("party:leave")
+        .setLabel("나가기")
+        .setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder()
+        .setCustomId("party:wait")
+        .setLabel("대기")
+        .setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder()
+        .setCustomId("party:waitoff")
+        .setLabel("대기 해지")
+        .setStyle(ButtonStyle.Secondary)
     ),
     new ActionRowBuilder().addComponents(
-      new ButtonBuilder().setCustomId("party:edit").setLabel("수정").setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder().setCustomId("party:manage").setLabel("인원 관리").setStyle(ButtonStyle.Secondary),
-      new ButtonBuilder().setCustomId("party:start").setLabel("시작").setStyle(ButtonStyle.Success),
-      new ButtonBuilder().setCustomId("party:end").setLabel("종료").setStyle(ButtonStyle.Danger),
+      new ButtonBuilder()
+        .setCustomId("party:edit")
+        .setLabel("수정")
+        .setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder()
+        .setCustomId("party:manage")
+        .setLabel("인원 관리")
+        .setStyle(ButtonStyle.Secondary),
+      new ButtonBuilder()
+        .setCustomId("party:start")
+        .setLabel("시작")
+        .setStyle(ButtonStyle.Success),
+      new ButtonBuilder()
+        .setCustomId("party:end")
+        .setLabel("종료")
+        .setStyle(ButtonStyle.Danger)
     ),
   ];
 }
 
 function endedActionRow() {
   return new ActionRowBuilder().addComponents(
-    new ButtonBuilder().setCustomId("party:delete").setLabel("🗑 삭제").setStyle(ButtonStyle.Danger),
+    new ButtonBuilder()
+      .setCustomId("party:delete")
+      .setLabel("🗑 삭제")
+      .setStyle(ButtonStyle.Danger)
   );
 }
 

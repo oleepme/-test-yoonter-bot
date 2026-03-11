@@ -443,13 +443,6 @@ function parseManagedSlotsText(text, party) {
   return { playing, waiting };
 }
 
-/**
- * 핵심 검색 로직
- * - 서버 별명(displayName / nickname) 기준
- * - 구버전처럼 guild.members.search 활용
- * - 일부 입력 허용
- * - 유일 후보 1명만 자동 채택
- */
 async function resolveGuildMemberByLooseName(guild, raw) {
   const input = (raw ?? "").toString().trim();
   if (!input) return { member: null, reason: "empty" };
@@ -500,7 +493,6 @@ async function resolveGuildMemberByLooseName(guild, raw) {
     );
   };
 
-  // 1. 캐시 exact
   const cachedExact = guild.members.cache.filter(isExactNicknameMatch);
   if (cachedExact.size === 1) {
     return { member: cachedExact.first(), reason: "exact-cache" };
@@ -513,7 +505,6 @@ async function resolveGuildMemberByLooseName(guild, raw) {
     };
   }
 
-  // 2. Discord 검색 API
   const searched = await guild.members
     .search({ query: input, limit: 10 })
     .catch(() => null);
@@ -548,7 +539,6 @@ async function resolveGuildMemberByLooseName(guild, raw) {
     }
   }
 
-  // 3. 전체 fetch fallback
   const fetched = await guild.members.fetch().catch(() => null);
   if (!fetched) return { member: null, reason: "not_found" };
 
@@ -588,7 +578,6 @@ async function applyManagedMembers(msgId, guild, party, slotsText) {
   const desiredWaiting = [];
   const errors = [];
 
-  // 참가 슬롯 처리: 기존 슬롯 사람은 유지, 새 입력만 검색
   for (let i = 0; i < parsed.playing.length; i++) {
     const entry = parsed.playing[i];
     const current = currentPlaying[i];
@@ -599,8 +588,7 @@ async function applyManagedMembers(msgId, guild, party, slotsText) {
     }
 
     if (current) {
-      const currentDisplay =
-        current.display_name || current.displayName || "";
+      const currentDisplay = current.display_name || current.displayName || "";
       if (sameNicknameLike(entry.name, currentDisplay)) {
         desiredPlaying.push({
           userId: current.user_id,
@@ -631,7 +619,6 @@ async function applyManagedMembers(msgId, guild, party, slotsText) {
     });
   }
 
-  // 대기 처리: 기존 대기 사람 유지, 새 입력만 검색
   const usedWaitingCurrent = new Set();
 
   for (const entry of parsed.waiting) {
@@ -641,8 +628,7 @@ async function applyManagedMembers(msgId, guild, party, slotsText) {
     for (let i = 0; i < currentWaiting.length; i++) {
       if (usedWaitingCurrent.has(i)) continue;
       const current = currentWaiting[i];
-      const currentDisplay =
-        current.display_name || current.displayName || "";
+      const currentDisplay = current.display_name || current.displayName || "";
       if (sameNicknameLike(entry.name, currentDisplay)) {
         reused = {
           userId: current.user_id,
@@ -893,7 +879,7 @@ async function handleParty(interaction) {
         guild_id: guild.id,
         owner_id: interaction.user.id,
         kind,
-        title: title || "(제목 없음)",
+        title: title || subKind || "(제목 없음)",
         sub_kind: subKind,
         party_note: note,
         time_text: time || "",
@@ -946,11 +932,16 @@ async function handleParty(interaction) {
     if (!editParty) return ephemeralError(interaction, "파티를 찾지 못했습니다.");
 
     const admin = isAdmin(interaction);
-    const isMember = playingMembers(editParty).some((m) => m.user_id ===     interaction.user.id);
+    const isMember = playingMembers(editParty).some(
+      (m) => m.user_id === interaction.user.id
+    );
     const ok = admin || interaction.user.id === editParty.owner_id || isMember;
 
     if (!ok) {
-      return ephemeralError(interaction, "현재 참가중인 파티원/파티장/운영진만 수정할 수 있습니다.");
+      return ephemeralError(
+        interaction,
+        "현재 참가중인 파티원/파티장/운영진만 수정할 수 있습니다."
+      );
     }
 
     await ackModal(interaction);
@@ -967,29 +958,27 @@ async function handleParty(interaction) {
         boardConfig?.key !== "STEAM" &&
         editParty.sub_kind
       ) {
-        // 롤 / 배그 / 발로 / 옵치
-        // 제목칸은 없고 세부 카테고리가 제목 역할을 함
         title = editParty.sub_kind;
       }
 
-      // 스팀게임은 제목(게임명)을 직접 입력해야 함
-            if (editParty.kind === "GAME" && boardConfig?.key === "STEAM" && !title) {
+      if (editParty.kind === "GAME" && boardConfig?.key === "STEAM" && !title) {
         return ephemeralError(interaction, "게임명을 입력해주세요.");
       }
 
-// 제목을 직접 입력해야 하는 경우에만 제목 필수 검사
-const shouldRequireManualTitle =
-  boardConfig?.key === "ETC" ||
-  (editParty.kind !== "GAME" && !isUnlimitedKind(editParty.kind));
+      const shouldRequireManualTitle =
+        boardConfig?.key === "ETC" ||
+        (editParty.kind !== "GAME" && !isUnlimitedKind(editParty.kind));
 
-if (shouldRequireManualTitle && !title) {
-  return ephemeralError(interaction, "제목은 필수입니다.");
-}
+      if (shouldRequireManualTitle && !title) {
+        return ephemeralError(interaction, "제목은 필수입니다.");
+      }
 
       let maxPlayers = Number(editParty.max_players) || 4;
       if (!isUnlimitedKind(editParty.kind)) {
         const parsed = parseMaxPlayers(getOptionalTextInputValue(interaction, "max"));
-        if (!parsed) return ephemeralError(interaction, "인원제한은 2~20 사이 숫자여야 합니다.");
+        if (!parsed) {
+          return ephemeralError(interaction, "인원제한은 2~20 사이 숫자여야 합니다.");
+        }
         maxPlayers = parsed;
       }
 
@@ -1013,7 +1002,9 @@ if (shouldRequireManualTitle && !title) {
             field("시간", timeDisplay(updated.time_text), true),
             field(
               "인원",
-              isUnlimitedKind(updated.kind) ? "제한 없음" : String(updated.max_players || 0),
+              isUnlimitedKind(updated.kind)
+                ? "제한 없음"
+                : String(updated.max_players || 0),
               true
             ),
             field("특이사항", updated.party_note || "(없음)"),
@@ -1043,7 +1034,12 @@ if (shouldRequireManualTitle && !title) {
       if (!isAdmin(interaction)) return ephemeralError(interaction, "운영진만 사용할 수 있습니다.");
 
       const slotsText = getOptionalTextInputValue(interaction, "slots_text");
-      const result = await applyManagedMembers(managedMsgId, guild, managedParty, slotsText);
+      const result = await applyManagedMembers(
+        managedMsgId,
+        guild,
+        managedParty,
+        slotsText
+      );
 
       if (!result.ok) {
         return ephemeralError(
@@ -1095,11 +1091,16 @@ if (shouldRequireManualTitle && !title) {
         const count = playingCount(joinParty);
 
         if (!existsAsPlaying && count >= maxPlayers) {
-          return ephemeralError(interaction, `이미 정원이 찼습니다. (최대 ${maxPlayers}명)`);
+          return ephemeralError(
+            interaction,
+            `이미 정원이 찼습니다. (최대 ${maxPlayers}명)`
+          );
         }
       }
 
-      const me = (joinParty.members ?? []).find((m) => m.user_id === interaction.user.id);
+      const me = (joinParty.members ?? []).find(
+        (m) => m.user_id === interaction.user.id
+      );
       const base = me ? stripWaitPrefix(me.note) : "";
       const finalNote = inputNote || base || "";
       const displayName = getDisplayNameFromInteraction(interaction);
@@ -1112,7 +1113,11 @@ if (shouldRequireManualTitle && !title) {
       if (updated) {
         await refreshPartyMessage(guild, updated);
         await writePartyLog(guild, {
-          title: wasWaiting ? "↩️ 대기 → 참가 전환" : existedBefore ? "📝 참가 비고 수정" : "➕ 파티 참가",
+          title: wasWaiting
+            ? "↩️ 대기 → 참가 전환"
+            : existedBefore
+              ? "📝 참가 비고 수정"
+              : "➕ 파티 참가",
           color: wasWaiting ? 0x1abc9c : 0x2ecc71,
           party: updated,
           actorId: interaction.user.id,
@@ -1145,7 +1150,12 @@ if (shouldRequireManualTitle && !title) {
       const note = getOptionalTextInputValue(interaction, "note").slice(0, 120);
       const displayName = getDisplayNameFromInteraction(interaction);
 
-      await setMemberNote(waitMsgId, interaction.user.id, displayName, `${WAIT_PREFIX}${note}`);
+      await setMemberNote(
+        waitMsgId,
+        interaction.user.id,
+        displayName,
+        `${WAIT_PREFIX}${note}`
+      );
 
       const updated = await getParty(waitMsgId);
       if (updated) {
@@ -1244,11 +1254,16 @@ if (shouldRequireManualTitle && !title) {
 
   if (interaction.isButton() && interaction.customId === "party:edit") {
     const admin = isAdmin(interaction);
-    const isMember = playingMembers(party).some((m) => m.user_id ===     interaction.user.id);
+    const isMember = playingMembers(party).some(
+      (m) => m.user_id === interaction.user.id
+    );
     const ok = admin || interaction.user.id === party.owner_id || isMember;
 
     if (!ok) {
-      await ephemeralError(interaction, "현재 참가중인 파티원/파티장/운영진만 수정할 수 있습니다.");
+      await ephemeralError(
+        interaction,
+        "현재 참가중인 파티원/파티장/운영진만 수정할 수 있습니다."
+      );
       return true;
     }
 
@@ -1271,15 +1286,25 @@ if (shouldRequireManualTitle && !title) {
   }
 
   if (interaction.isButton() && interaction.customId === "party:start") {
-    const isMember = playingMembers(party).some((m) => m.user_id === interaction.user.id);
+    const isMember = playingMembers(party).some(
+      (m) => m.user_id === interaction.user.id
+    );
     const ok = isMember || interaction.user.id === party.owner_id || isAdmin(interaction);
     if (!ok) {
-      await ephemeralError(interaction, "현재 참가중인 파티원/파티장/운영진만 가능합니다.");
+      await ephemeralError(
+        interaction,
+        "현재 참가중인 파티원/파티장/운영진만 가능합니다."
+      );
       return true;
     }
 
     await ackUpdate(interaction);
-    await upsertParty({ ...party, status: "PLAYING", mode: "TEXT", start_at: 0 });
+    await upsertParty({
+      ...party,
+      status: "PLAYING",
+      mode: "TEXT",
+      start_at: 0,
+    });
 
     const updated = await getParty(msgId);
     if (updated) {
@@ -1295,10 +1320,15 @@ if (shouldRequireManualTitle && !title) {
   }
 
   if (interaction.isButton() && interaction.customId === "party:end") {
-    const isMember = playingMembers(party).some((m) => m.user_id === interaction.user.id);
+    const isMember = playingMembers(party).some(
+      (m) => m.user_id === interaction.user.id
+    );
     const ok = isMember || interaction.user.id === party.owner_id || isAdmin(interaction);
     if (!ok) {
-      await ephemeralError(interaction, "현재 참가중인 파티원/파티장/운영진만 가능합니다.");
+      await ephemeralError(
+        interaction,
+        "현재 참가중인 파티원/파티장/운영진만 가능합니다."
+      );
       return true;
     }
 
@@ -1333,7 +1363,10 @@ if (shouldRequireManualTitle && !title) {
       await interaction.message.delete();
       await deleteParty(msgId);
     } catch {
-      await ephemeralError(interaction, "메시지 삭제에 실패했습니다. (봇 권한 확인)");
+      await ephemeralError(
+        interaction,
+        "메시지 삭제에 실패했습니다. (봇 권한 확인)"
+      );
     }
     return true;
   }
