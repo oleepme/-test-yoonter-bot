@@ -82,9 +82,10 @@ function detectWelcomeUpdateType(oldMember, newMember, config = getWelcomeConfig
   const oldIncluded = isCountTarget(oldMember, config);
   const newIncluded = isCountTarget(newMember, config);
 
-  if (!oldIncluded && newIncluded) return "➕ 입장 카운트 반영";
-  if (oldIncluded && !newIncluded) return "➖ 입장 카운트 제외";
+  // 포함 역할이 처음 붙는 순간만 로그
+  if (!oldIncluded && newIncluded) return "🏷 역할부여";
 
+  // 입장카운트 제외 로그는 더 이상 쓰지 않음
   return null;
 }
 
