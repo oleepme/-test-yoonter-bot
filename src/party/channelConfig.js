@@ -13,6 +13,7 @@ const {
   ROLE_STEAM_HORROR_ID,
   ROLE_STEAM_COOP_ID,
   ROLE_STEAM_OPENWORLD_ID,
+
   ROLE_ETC_APEX_ID,
   ROLE_ETC_SUDDEN_ID,
   ROLE_ETC_MINECRAFT_ID,
@@ -72,7 +73,7 @@ const BOARD_CONFIGS = [
       오픈월드: ROLE_STEAM_OPENWORLD_ID,
     },
     gameSubKinds: ["공포", "협동", "오픈월드"],
-    usesCustomGameTitle: true, // 스팀은 실제 게임명 입력
+    usesCustomGameTitle: true,
   },
   {
     key: "ETC",
@@ -86,6 +87,7 @@ const BOARD_CONFIGS = [
       에이팩스: ROLE_ETC_APEX_ID,
       서든어택: ROLE_ETC_SUDDEN_ID,
       마인크래프트: ROLE_ETC_MINECRAFT_ID,
+      직접작성: "",
     },
     gameSubKinds: ["에이팩스", "서든어택", "마인크래프트", "직접작성"],
     usesCustomGameTitle: true,
@@ -102,49 +104,36 @@ function getAllBoardConfigs() {
 
 function getMentionRoleId(config, subKind = "") {
   if (!config) return "";
-  if (config.mentionRoleId) return config.mentionRoleId;
 
   if (config.mentionRoleBySubKind && subKind) {
     return config.mentionRoleBySubKind[subKind] || "";
   }
+
+  if (config.mentionRoleId) return config.mentionRoleId;
 
   return "";
 }
 
 function buildDisplayTitle(config, title, kind, subKind = "") {
   const clean = String(title || "").trim() || "(제목없음)";
-  const cleanSubKind = String(subKind || "").trim();
 
   if (!config) return clean;
 
   if (config.key === "ETC") {
     if (kind === "GAME") {
-      if (cleanSubKind && cleanSubKind !== "직접작성") {
-        if (clean && clean !== cleanSubKind) {
-          return `[기타] ${cleanSubKind} - ${clean}`;
-        }
-        return `[기타] ${cleanSubKind}`;
-      }
+      if (subKind && subKind !== "직접작성") return `[기타] ${subKind}`;
       return `[기타] ${clean}`;
     }
-
     if (kind === "MUSIC") return `[기타] ${clean}`;
     if (kind === "CHAT") return `[기타] ${clean}`;
     if (kind === "MOVIE") return `[기타] ${clean}`;
     return `[기타] ${clean}`;
   }
 
-  // 일반 게임 게시판: [대분류] 소분류
-  if (
-    config.key === "LOL" ||
-    config.key === "PUBG" ||
-    config.key === "VALO" ||
-    config.key === "OW"
-  ) {
-    return `[${config.partyPrefix}] ${cleanSubKind || clean}`;
+  if (config.key === "LOL" || config.key === "PUBG" || config.key === "VALO" || config.key === "OW") {
+    return `[${config.partyPrefix}] ${subKind || clean}`;
   }
 
-  // 스팀: [스팀] 게임명
   if (config.key === "STEAM") {
     return `[스팀] ${clean}`;
   }

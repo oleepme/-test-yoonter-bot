@@ -46,7 +46,7 @@ module.exports = {
   ROLE_STEAM_COOP_ID: opt("ROLE_STEAM_COOP_ID"),
   ROLE_STEAM_OPENWORLD_ID: opt("ROLE_STEAM_OPENWORLD_ID"),
 
-  // 기타게임 세부 카테고리별 멘션 역할
+  // 기타게임 세부카테고리 역할
   ROLE_ETC_APEX_ID: opt("ROLE_ETC_APEX_ID"),
   ROLE_ETC_SUDDEN_ID: opt("ROLE_ETC_SUDDEN_ID"),
   ROLE_ETC_MINECRAFT_ID: opt("ROLE_ETC_MINECRAFT_ID"),

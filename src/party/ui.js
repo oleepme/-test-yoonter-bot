@@ -30,12 +30,21 @@ function kindIcon(kind) {
 function isFixedTitleGameBoard(boardConfig, kind) {
   if (kind !== "GAME") return false;
   const key = (boardConfig?.key || "").toUpperCase();
-  return (
-    key === "LOL" ||
-    key === "PUBG" ||
-    key === "VALO" ||
-    key === "OW"
-  );
+  return key === "LOL" || key === "PUBG" || key === "VALO" || key === "OW";
+}
+
+function shouldShowGameTitleInput(boardConfig, kind, selectedSubKind = "") {
+  if (kind !== "GAME") return true;
+  if (isFixedTitleGameBoard(boardConfig, kind)) return false;
+
+  const key = (boardConfig?.key || "").toUpperCase();
+
+  if (key === "STEAM") return true;
+  if (key === "ETC") {
+    return selectedSubKind === "직접작성";
+  }
+
+  return true;
 }
 
 function partyBoardEmbed(boardConfig) {
@@ -81,15 +90,14 @@ function partyBoardComponents(boardConfig) {
   ];
 }
 
-function createPartyModal(kind, boardConfig) {
+function createPartyModal(kind, boardConfig, selectedSubKind = "") {
   const modal = new ModalBuilder()
     .setCustomId(`party:create:submit:${kind}`)
     .setTitle(`새 ${kindLabel(kind)} 파티`);
 
   const rows = [];
 
-  // 롤 / 배그 / 발로 / 옵치 : 제목칸 없음
-  if (!isFixedTitleGameBoard(boardConfig, kind)) {
+  if (shouldShowGameTitleInput(boardConfig, kind, selectedSubKind)) {
     const title = new TextInputBuilder()
       .setCustomId("title")
       .setLabel(isUnlimitedKind(kind) ? "제목(선택)" : "제목(필수)")
@@ -132,14 +140,14 @@ function createPartyModal(kind, boardConfig) {
 
 function editPartyModal(msgId, party, boardConfig, _isAdminEdit) {
   const kind = party?.kind || "GAME";
+  const subKind = (party?.sub_kind ?? "").toString();
   const modal = new ModalBuilder()
     .setCustomId(`party:edit:submit:${msgId}`)
     .setTitle("파티 수정");
 
   const rows = [];
 
-  // 롤 / 배그 / 발로 / 옵치 : 수정에서도 제목칸 없음
-  if (!isFixedTitleGameBoard(boardConfig, kind)) {
+  if (shouldShowGameTitleInput(boardConfig, kind, subKind)) {
     const title = new TextInputBuilder()
       .setCustomId("title")
       .setLabel(isUnlimitedKind(kind) ? "제목(선택)" : "제목(필수)")
@@ -294,4 +302,5 @@ module.exports = {
   kindIcon,
   isUnlimitedKind,
   isFixedTitleGameBoard,
+  shouldShowGameTitleInput,
 };
