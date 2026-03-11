@@ -1,3 +1,4 @@
+// src/features/welcome/handler.js
 const {
   WELCOME_BOARD_CHANNEL_ID,
   ENABLE_WELCOME
@@ -14,28 +15,28 @@ const {
   detectWelcomeUpdateType
 } = require("./service");
 
-const TRACKED_WELCOME_TITLES = new Set([
-  "⭕ 입장",
-  "❌ 퇴장",
-  "✈ 외출",
-  "🏠 복귀",
-  "🏷 역할부여",
-  "👥 부계정",
-  "👥 부계정 해제",
-]);
+const {
+  upsertMemberProfile,
+  createWelcomeSession,
+  getActiveWelcomeSession,
+  updateActiveWelcomeSessionIdentity,
+  endWelcomeSession,
+  insertWelcomeLog,
+  getWelcomeLogsBySession,
+} = require("../../db");
 
 function getWelcomeChannel(guild) {
   return guild.channels.fetch(WELCOME_BOARD_CHANNEL_ID).catch(() => null);
 }
 
 async function sendWelcomeCountLog(guild, title, beforeCount, afterCount, memberLike) {
-  if (!ENABLE_WELCOME) return;
-  if (!WELCOME_BOARD_CHANNEL_ID) return;
+  if (!ENABLE_WELCOME) return null;
+  if (!WELCOME_BOARD_CHANNEL_ID) return null;
 
   const channel = await getWelcomeChannel(guild);
   if (!channel?.isTextBased()) {
     console.error("WELCOME_CHANNEL_INVALID");
-    return;
+    return null;
   }
 
   const embed = buildWelcomeEmbed({
@@ -45,68 +46,104 @@ async function sendWelcomeCountLog(guild, title, beforeCount, afterCount, member
     memberLike
   });
 
-  await channel.send({
+  const sent = await channel.send({
     embeds: [embed],
     allowedMentions: { parse: [] },
   }).catch((e) => {
     console.error("WELCOME_LOG_SEND_FAIL", e);
+    return null;
   });
-}
 
-function parseEmbedHeader(description = "") {
-  const firstLine = (description || "").split("\n")[0] || "";
-  const m = firstLine.match(/^## \*\*(.+?)\*\* \((\d+) → (\d+)\)$/);
-  if (!m) return null;
-
-  return {
-    title: m[1],
-    beforeCount: Number(m[2]),
-    afterCount: Number(m[3]),
-  };
-}
-
-function embedContainsUserId(embed, userId) {
-  const desc = embed?.description || "";
-  return desc.includes(`<@${userId}>`) || desc.includes(`<@!${userId}>`);
+  return sent;
 }
 
 async function refreshTrackedWelcomeEmbeds(guild, memberLike) {
   if (!ENABLE_WELCOME) return;
-  if (!WELCOME_BOARD_CHANNEL_ID) return;
   if (!memberLike?.id) return;
 
-  const channel = await getWelcomeChannel(guild);
-  if (!channel?.isTextBased()) return;
+  const activeSession = await getActiveWelcomeSession(guild.id, memberLike.id).catch((e) => {
+    console.error("WELCOME_GET_ACTIVE_SESSION_FAIL", e);
+    return null;
+  });
 
-  const recent = await channel.messages.fetch({ limit: 100 }).catch(() => null);
-  if (!recent) return;
+  if (!activeSession?.session_id) return;
 
-  const botId = guild.client.user?.id;
+  const logs = await getWelcomeLogsBySession(
+    guild.id,
+    memberLike.id,
+    activeSession.session_id
+  ).catch((e) => {
+    console.error("WELCOME_GET_SESSION_LOGS_FAIL", e);
+    return [];
+  });
 
-  for (const msg of recent.values()) {
-    if (msg.author?.id !== botId) continue;
-    const embed = msg.embeds?.[0];
-    if (!embed) continue;
-    if (!embedContainsUserId(embed, memberLike.id)) continue;
+  if (!logs?.length) return;
 
-    const parsed = parseEmbedHeader(embed.description || "");
-    if (!parsed) continue;
-    if (!TRACKED_WELCOME_TITLES.has(parsed.title)) continue;
+  const channelCache = new Map();
 
-    const nextEmbed = buildWelcomeEmbed({
-      title: parsed.title,
-      beforeCount: parsed.beforeCount,
-      afterCount: parsed.afterCount,
-      memberLike,
-    });
+  for (const row of logs) {
+    try {
+      let channel = channelCache.get(row.channel_id);
+      if (!channel) {
+        channel = await guild.channels.fetch(row.channel_id).catch(() => null);
+        if (channel) channelCache.set(row.channel_id, channel);
+      }
+      if (!channel?.isTextBased()) continue;
 
-    await msg.edit({
-      embeds: [nextEmbed],
-      allowedMentions: { parse: [] },
-    }).catch((e) => {
-      console.error("WELCOME_EDIT_FAIL", e);
-    });
+      const msg = await channel.messages.fetch(row.message_id).catch(() => null);
+      if (!msg) continue;
+
+      const nextEmbed = buildWelcomeEmbed({
+        title: row.kind,
+        beforeCount: row.before_count,
+        afterCount: row.after_count,
+        memberLike,
+      });
+
+      await msg.edit({
+        embeds: [nextEmbed],
+        allowedMentions: { parse: [] },
+      }).catch((e) => {
+        console.error("WELCOME_EDIT_FAIL", e);
+      });
+    } catch (e) {
+      console.error("WELCOME_REFRESH_ONE_FAIL", e);
+    }
   }
+}
+
+async function logWelcomeEvent({
+  guild,
+  memberLike,
+  title,
+  beforeCount,
+  afterCount,
+  sessionId,
+}) {
+  const sent = await sendWelcomeCountLog(
+    guild,
+    title,
+    beforeCount,
+    afterCount,
+    memberLike
+  );
+
+  if (!sent) return null;
+
+  await insertWelcomeLog({
+    guildId: guild.id,
+    userId: memberLike.id,
+    sessionId: sessionId || null,
+    channelId: sent.channel.id,
+    messageId: sent.id,
+    kind: title,
+    beforeCount,
+    afterCount,
+  }).catch((e) => {
+    console.error("WELCOME_INSERT_LOG_FAIL", e);
+  });
+
+  return sent;
 }
 
 async function initWelcomeFeature(guild) {
@@ -128,7 +165,43 @@ function bindWelcomeEvents(client) {
       const afterCount = included ? beforeCount + 1 : beforeCount;
 
       setWelcomeCount(afterCount);
-      await sendWelcomeCountLog(member.guild, "⭕ 입장", beforeCount, afterCount, member);
+
+      const displayName =
+        member.displayName ||
+        member.nickname ||
+        member.user?.globalName ||
+        member.user?.username ||
+        "";
+
+      const username = member.user?.username || "";
+
+      await upsertMemberProfile(
+        member.guild.id,
+        member.id,
+        displayName,
+        username
+      ).catch((e) => {
+        console.error("WELCOME_PROFILE_UPSERT_FAIL", e);
+      });
+
+      const sessionId = await createWelcomeSession(
+        member.guild.id,
+        member.id,
+        displayName,
+        username
+      ).catch((e) => {
+        console.error("WELCOME_CREATE_SESSION_FAIL", e);
+        return null;
+      });
+
+      await logWelcomeEvent({
+        guild: member.guild,
+        memberLike: member,
+        title: "⭕ 입장",
+        beforeCount,
+        afterCount,
+        sessionId,
+      });
     } catch (e) {
       console.error("WELCOME_ADD_EVENT_FAIL", e);
     }
@@ -145,7 +218,47 @@ function bindWelcomeEvents(client) {
       const afterCount = included ? Math.max(0, beforeCount - 1) : beforeCount;
 
       setWelcomeCount(afterCount);
-      await sendWelcomeCountLog(member.guild, "❌ 퇴장", beforeCount, afterCount, member);
+
+      const displayName =
+        member.displayName ||
+        member.nickname ||
+        member.user?.globalName ||
+        member.user?.username ||
+        "";
+
+      const username = member.user?.username || "";
+
+      await upsertMemberProfile(
+        member.guild.id,
+        member.id,
+        displayName,
+        username
+      ).catch((e) => {
+        console.error("WELCOME_PROFILE_UPSERT_FAIL", e);
+      });
+
+      const activeSession = await getActiveWelcomeSession(
+        member.guild.id,
+        member.id
+      ).catch((e) => {
+        console.error("WELCOME_GET_ACTIVE_SESSION_FAIL", e);
+        return null;
+      });
+
+      const sessionId = activeSession?.session_id || null;
+
+      await logWelcomeEvent({
+        guild: member.guild,
+        memberLike: member,
+        title: "❌ 퇴장",
+        beforeCount,
+        afterCount,
+        sessionId,
+      });
+
+      await endWelcomeSession(member.guild.id, member.id).catch((e) => {
+        console.error("WELCOME_END_SESSION_FAIL", e);
+      });
     } catch (e) {
       console.error("WELCOME_REMOVE_EVENT_FAIL", e);
     }
@@ -170,9 +283,46 @@ function bindWelcomeEvents(client) {
 
       const newbieRoleChanged = hadNewbie !== hasNewbie;
 
-      // 기존 welcome 임베드 실시간 갱신:
-      // 닉네임 변경 / 아이디 변경 / 뉴비 역할 변화 때만 수행
-      if (displayNameChanged || usernameChanged || newbieRoleChanged) {
+      const displayName =
+        newMember.displayName ||
+        newMember.nickname ||
+        newMember.user?.globalName ||
+        newMember.user?.username ||
+        "";
+
+      const username = newMember.user?.username || "";
+
+      await upsertMemberProfile(
+        newMember.guild.id,
+        newMember.id,
+        displayName,
+        username
+      ).catch((e) => {
+        console.error("WELCOME_PROFILE_UPSERT_FAIL", e);
+      });
+
+      const activeSession = await getActiveWelcomeSession(
+        newMember.guild.id,
+        newMember.id
+      ).catch((e) => {
+        console.error("WELCOME_GET_ACTIVE_SESSION_FAIL", e);
+        return null;
+      });
+
+      // 현재 세션이 있을 때만 현재 identity 동기화
+      if (activeSession?.session_id) {
+        await updateActiveWelcomeSessionIdentity(
+          newMember.guild.id,
+          newMember.id,
+          displayName,
+          username
+        ).catch((e) => {
+          console.error("WELCOME_UPDATE_SESSION_IDENTITY_FAIL", e);
+        });
+      }
+
+      // 닉변 / 아이디변경 / 뉴비역할 변화 때만 현재 세션 메시지 갱신
+      if ((displayNameChanged || usernameChanged || newbieRoleChanged) && activeSession?.session_id) {
         await refreshTrackedWelcomeEmbeds(newMember.guild, newMember);
       }
 
@@ -187,7 +337,29 @@ function bindWelcomeEvents(client) {
       const afterCount = Math.max(0, beforeCount + delta);
 
       setWelcomeCount(afterCount);
-      await sendWelcomeCountLog(newMember.guild, title, beforeCount, afterCount, newMember);
+
+      // 혹시 세션이 비어 있으면 안전하게 하나 생성
+      let sessionId = activeSession?.session_id || null;
+      if (!sessionId) {
+        sessionId = await createWelcomeSession(
+          newMember.guild.id,
+          newMember.id,
+          displayName,
+          username
+        ).catch((e) => {
+          console.error("WELCOME_CREATE_SESSION_FAIL", e);
+          return null;
+        });
+      }
+
+      await logWelcomeEvent({
+        guild: newMember.guild,
+        memberLike: newMember,
+        title,
+        beforeCount,
+        afterCount,
+        sessionId,
+      });
     } catch (e) {
       console.error("WELCOME_UPDATE_EVENT_FAIL", e);
     }
