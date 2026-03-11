@@ -14,9 +14,8 @@ function getLiveUsername(memberLike) {
   return memberLike?.user?.username || "unknown";
 }
 
-function getProfileLink(memberLike) {
-  if (!memberLike?.id) return "(알 수 없음)";
-  return `[프로필 보기](https://discord.com/users/${memberLike.id})`;
+function getUserIdText(memberLike) {
+  return memberLike?.id || "unknown";
 }
 
 function getLiveRoleNames(memberLike) {
@@ -32,7 +31,7 @@ function getLiveRoleNames(memberLike) {
 function buildWelcomeEmbed({ title, beforeCount, afterCount, memberLike }) {
   const nickname = getLiveNickname(memberLike);
   const username = getLiveUsername(memberLike);
-  const profileLink = getProfileLink(memberLike);
+  const userId = getUserIdText(memberLike);
   const roleNames = getLiveRoleNames(memberLike);
 
   return new EmbedBuilder()
@@ -40,9 +39,7 @@ function buildWelcomeEmbed({ title, beforeCount, afterCount, memberLike }) {
     .setDescription(
       [
         `## **${title}** (${beforeCount} → ${afterCount})`,
-        `**닉네임:** ${nickname}`,
-        `**아이디:** ${username}`,
-        `**프로필:** ${profileLink}`,
+        `**${nickname} · ${username} · ${userId}**`,
         `\`${roleNames}\``,
       ].join("\n")
     )

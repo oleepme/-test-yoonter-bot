@@ -66,7 +66,7 @@ function parseEmbedHeader(description = "") {
 
 function embedContainsUserId(embed, userId) {
   const desc = embed?.description || "";
-  return desc.includes(`https://discord.com/users/${userId}`);
+  return desc.includes(String(userId));
 }
 
 async function refreshTrackedWelcomeEmbeds(guild, memberLike) {
@@ -153,10 +153,11 @@ function bindWelcomeEvents(client) {
     try {
       const config = getWelcomeConfig();
 
-      // 1) 닉네임/역할 실시간 반영: 기존 웰컴 임베드 갱신
+      // 닉네임 / 아이디 / 역할 실시간 반영
       const displayNameChanged = oldMember.displayName !== newMember.displayName;
       const usernameChanged = oldMember.user?.username !== newMember.user?.username;
-      const rolesChanged = oldMember.roles.cache.size !== newMember.roles.cache.size ||
+      const rolesChanged =
+        oldMember.roles.cache.size !== newMember.roles.cache.size ||
         [...oldMember.roles.cache.keys()].some((id) => !newMember.roles.cache.has(id)) ||
         [...newMember.roles.cache.keys()].some((id) => !oldMember.roles.cache.has(id));
 
@@ -164,7 +165,6 @@ function bindWelcomeEvents(client) {
         await refreshTrackedWelcomeEmbeds(newMember.guild, newMember);
       }
 
-      // 2) 상태 변화 로그
       const title = detectWelcomeUpdateType(oldMember, newMember, config);
       if (!title) return;
 
